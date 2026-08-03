@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and virtual environments
+.env
+.env.*
+env/
+venv/
+.venv/
+.memory/
+.claude/
+.agents/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.project
+.pydevproject
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project-specific runtime data and logs
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+thread_dump.txt
+*.log
+
+# Generated image assets
+generated_images/*
+!generated_images/.gitkeep
