@@ -26,9 +26,21 @@ from config import settings as _settings
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL  = "gemini-2.0-flash"
-_FALLBACK_CHAIN = ["gemini-2.0-flash-lite", "gemini-1.5-flash"]
-_ACTIVE_MODEL   = getattr(_settings, "GEMINI_MODEL", None) or _DEFAULT_MODEL
+_DEFAULT_MODEL  = "gemini-2.5-flash"
+_FALLBACK_CHAIN = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-latest",
+]
+
+_raw_gemini_model = getattr(_settings, "GEMINI_MODEL", None)
+if _raw_gemini_model and _raw_gemini_model.strip() in ("gemini-2.0-flash", "gemini-2.0-flash-exp", "models/gemini-2.0-flash"):
+    logger.warning("Deprecated Gemini model '%s' specified in .env. Migrating to '%s'.", _raw_gemini_model, _DEFAULT_MODEL)
+    _ACTIVE_MODEL = _DEFAULT_MODEL
+else:
+    _ACTIVE_MODEL = _raw_gemini_model or _DEFAULT_MODEL
 
 
 class GeminiChatLLM:
@@ -47,8 +59,11 @@ class GeminiChatLLM:
 
     def _build(self):
         from langchain_google_genai import ChatGoogleGenerativeAI
+        model_name = self._active_model
+        if model_name.startswith("models/"):
+            model_name = model_name[len("models/"):]
         return ChatGoogleGenerativeAI(
-            model=self._active_model,
+            model=model_name,
             google_api_key=_settings.GEMINI_API_KEY,
             temperature=0.3,
             max_output_tokens=self._max_tokens,
@@ -129,9 +144,15 @@ class GeminiChatLLM:
     def _try_next_fallback(self) -> bool:
         """Switch to the next model in the fallback chain. Returns True if switched."""
         try:
-            idx = _FALLBACK_CHAIN.index(self._active_model)
-            next_idx = idx + 1
-        except ValueError:
+            curr = self._active_model
+            if curr.startswith("models/"):
+                curr = curr[len("models/"):]
+            clean_chain = [m[len("models/"):] if m.startswith("models/") else m for m in _FALLBACK_CHAIN]
+            if curr in clean_chain:
+                next_idx = clean_chain.index(curr) + 1
+            else:
+                next_idx = 0
+        except Exception:
             next_idx = 0
 
         if next_idx >= len(_FALLBACK_CHAIN):
@@ -142,3 +163,8 @@ class GeminiChatLLM:
         self._active_model = next_model
         self._client = self._build()
         return True
+
+    def _rotate(self) -> bool:
+        """Alias for _try_next_fallback for uniform streaming rotation."""
+        return self._try_next_fallback()
+

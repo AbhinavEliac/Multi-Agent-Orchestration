@@ -87,7 +87,7 @@ class Settings:
 
     GEMINI_API_KEY = _get_env("GEMINI_API_KEY")
 
-    GEMINI_MODEL = _get_env("GEMINI_MODEL", default="gemini-2.0-flash")
+    GEMINI_MODEL = _get_env("GEMINI_MODEL", default="gemini-2.5-flash")
 
     EMBEDDING_MODEL = _get_env(
         "EMBEDDING_MODEL",

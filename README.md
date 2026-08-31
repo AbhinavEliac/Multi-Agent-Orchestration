@@ -210,8 +210,8 @@ PINECONE_INDEX_NAME=blog-enhancer
 EMBEDDING_PROVIDER=gemini
 EMBEDDING_MODEL=models/gemini-embedding-001
 EMBEDDING_DIMENSION=3072
-GROQ_MODEL=llama-3.3-70b-versatile
-GEMINI_MODEL=gemini-2.0-flash
+GROQ_MODEL=llama-3.1-8b-instant
+GEMINI_MODEL=gemini-2.5-flash
 OPENAI_MODEL=gpt-4o
 
 # RAG configurations
