@@ -245,7 +245,20 @@ def stream_invoke(prompt, llm, inputs: dict, chunk_callback) -> str:
             chain     = prompt | llm._client
             full_text = ""
             for chunk in chain.stream(inputs):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                raw_token = chunk.content if hasattr(chunk, "content") else chunk
+                if isinstance(raw_token, list):
+                    extracted = []
+                    for item in raw_token:
+                        if isinstance(item, dict) and "text" in item:
+                            extracted.append(item["text"])
+                        elif isinstance(item, str):
+                            extracted.append(item)
+                    token = "".join(extracted)
+                elif isinstance(raw_token, str):
+                    token = raw_token
+                else:
+                    token = str(raw_token) if raw_token is not None else ""
+
                 if token:
                     chunk_callback(token)
                     full_text += token

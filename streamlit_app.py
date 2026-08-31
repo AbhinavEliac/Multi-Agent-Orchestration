@@ -509,8 +509,13 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
                         if chunk is None:
                             stream_agent = ""
                             break
-                        streamed += chunk
-                        jw.append_stream(chunk)
+                        if isinstance(chunk, list):
+                            chunk_str = "".join(item.get("text", "") if isinstance(item, dict) else str(item) for item in chunk)
+                        else:
+                            chunk_str = str(chunk)
+                        if chunk_str:
+                            streamed += chunk_str
+                            jw.append_stream(chunk_str)
                 except queue.Empty:
                     pass
 
@@ -522,7 +527,13 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
             while True:
                 chunk = sq.get_nowait()
                 if chunk is None: break
-                if chunk: streamed += chunk; jw.append_stream(chunk)
+                if isinstance(chunk, list):
+                    chunk_str = "".join(item.get("text", "") if isinstance(item, dict) else str(item) for item in chunk)
+                else:
+                    chunk_str = str(chunk)
+                if chunk_str:
+                    streamed += chunk_str
+                    jw.append_stream(chunk_str)
         except queue.Empty:
             pass
 
