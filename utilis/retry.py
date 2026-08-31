@@ -56,6 +56,14 @@ def invoke_with_retry(prompt, llm, inputs: dict):
         chain = prompt | llm._client
         try:
             response = llm._invoke_chain(chain, inputs)
+            if hasattr(response, "content") and isinstance(response.content, list):
+                extracted = []
+                for item in response.content:
+                    if isinstance(item, dict) and "text" in item:
+                        extracted.append(item["text"])
+                    elif isinstance(item, str):
+                        extracted.append(item)
+                response.content = "\n".join(extracted)
             try:
                 from utilis.token_counter import add_tokens
                 usage = getattr(response, "usage_metadata", None)

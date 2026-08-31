@@ -26,18 +26,22 @@ from config import settings as _settings
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL  = "gemini-2.5-flash"
+_DEFAULT_MODEL  = "gemini-3.5-flash-lite"
 _FALLBACK_CHAIN = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
     "gemini-3.6-flash",
     "gemini-3.7-flash",
+    "gemini-2.5-flash",
     "gemini-flash-latest",
 ]
 
 _raw_gemini_model = getattr(_settings, "GEMINI_MODEL", None)
-if _raw_gemini_model and _raw_gemini_model.strip() in ("gemini-2.0-flash", "gemini-2.0-flash-exp", "models/gemini-2.0-flash"):
-    logger.warning("Deprecated Gemini model '%s' specified in .env. Migrating to '%s'.", _raw_gemini_model, _DEFAULT_MODEL)
+if _raw_gemini_model and _raw_gemini_model.strip() in (
+    "gemini-2.0-flash", "gemini-2.0-flash-exp", "models/gemini-2.0-flash",
+    "gemini-2.5-flash-lite", "models/gemini-2.5-flash-lite"
+):
+    logger.warning("Deprecated Gemini model '%s' specified. Migrating to '%s'.", _raw_gemini_model, _DEFAULT_MODEL)
     _ACTIVE_MODEL = _DEFAULT_MODEL
 else:
     _ACTIVE_MODEL = _raw_gemini_model or _DEFAULT_MODEL
@@ -74,16 +78,24 @@ class GeminiChatLLM:
 
     def _invoke_chain(self, chain, inputs: dict):
         """
-        Invoke with Gemini-specific error handling.
+        Invoke with Gemini-specific error handling and dynamic model fallback.
 
-        429 / ResourceExhausted  → wait then retry, then try next fallback model.
-        Model not found / invalid → immediately try next fallback in chain.
-        5xx server errors        → short sleep then re-raise.
+        429 / ResourceExhausted   → try next fallback model in chain, then backoff.
+        404 / Model not found     → immediately switch to next fallback in chain.
+        5xx server errors         → short sleep then try next fallback.
         """
-        backoff = 15.0
-        for attempt in range(5):
+        backoff = 10.0
+        prompt_template = None
+        if hasattr(chain, "steps") and len(chain.steps) > 0:
+            prompt_template = chain.steps[0]
+
+        for attempt in range(len(_FALLBACK_CHAIN) * 2):
             try:
-                return chain.invoke(inputs)
+                if prompt_template is not None:
+                    runnable = prompt_template | self._client
+                else:
+                    runnable = chain
+                return runnable.invoke(inputs)
 
             except Exception as exc:
                 msg = str(exc).lower()
@@ -101,22 +113,16 @@ class GeminiChatLLM:
                         or "daily" in msg
                     )
                     if is_daily:
-                        # Try next fallback model, but if no more models, fail immediately
                         if self._try_next_fallback():
-                            chain = chain.first | self._client  # type: ignore
                             continue
                         raise RuntimeError(
                             "All Gemini models have exhausted their daily quota. "
                             "Please upgrade your plan or try again tomorrow."
                         ) from exc
 
-                    if attempt >= 4:
-                        raise
-                    # Try next fallback model before sleeping
                     if self._try_next_fallback():
-                        chain = chain.first | self._client  # type: ignore
                         continue
-                    wait = min(backoff * (2 ** attempt), 90)
+                    wait = min(backoff * (2 ** (attempt % 3)), 60)
                     logger.warning(
                         "Gemini quota exhausted on all models (attempt %d) — waiting %.0fs.",
                         attempt + 1, wait,
@@ -128,14 +134,17 @@ class GeminiChatLLM:
                     "not found" in msg
                     or "invalid model" in msg
                     or "model_not_found" in msg
+                    or "404" in msg
+                    or "no longer available" in msg
                 )
                 if is_model_err:
                     if self._try_next_fallback():
-                        chain = chain.first | self._client  # type: ignore
                         continue
 
                 if "500" in msg or "503" in msg or "internal" in msg:
-                    time.sleep(10)
+                    time.sleep(5)
+                    if self._try_next_fallback():
+                        continue
 
                 raise
 

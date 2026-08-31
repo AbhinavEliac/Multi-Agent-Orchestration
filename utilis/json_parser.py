@@ -54,9 +54,20 @@ def _extract_json_object(text: str) -> str:
     return text[start:]
 
 
-def load_json(text: str) -> dict:
+def load_json(text) -> dict:
     """
-    Parse JSON from an LLM response string.
+    Parse JSON from an LLM response string or structured content list.
+    """
+    if isinstance(text, list):
+        extracted = []
+        for item in text:
+            if isinstance(item, dict) and "text" in item:
+                extracted.append(item["text"])
+            elif isinstance(item, str):
+                extracted.append(item)
+        text = "\n".join(extracted)
+    elif not isinstance(text, str):
+        text = str(text)
 
     Handles:
     - Plain JSON
