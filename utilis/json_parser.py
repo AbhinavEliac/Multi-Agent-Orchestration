@@ -57,6 +57,12 @@ def _extract_json_object(text: str) -> str:
 def load_json(text) -> dict:
     """
     Parse JSON from an LLM response string or structured content list.
+
+    Handles:
+    - Plain JSON
+    - JSON wrapped in ```json ... ``` fences
+    - JSON with leading/trailing prose
+    - Partial or malformed JSON (returns {} instead of raising)
     """
     if isinstance(text, list):
         extracted = []
@@ -68,13 +74,6 @@ def load_json(text) -> dict:
         text = "\n".join(extracted)
     elif not isinstance(text, str):
         text = str(text)
-
-    Handles:
-    - Plain JSON
-    - JSON wrapped in ```json ... ``` fences
-    - JSON with leading/trailing prose
-    - Partial or malformed JSON (returns {} instead of raising)
-    """
     if not text or not text.strip():
         return {}
 
