@@ -90,12 +90,12 @@ def set_provider(name: str) -> None:
 def _is_valid_gemini_key(key: str | None) -> bool:
     if not key: return False
     k = key.strip()
-    return k.startswith("AIzaSy") and len(k) >= 30
+    return len(k) >= 15
 
 def _is_valid_openai_key(key: str | None) -> bool:
     if not key: return False
     k = key.strip()
-    return k.startswith("sk-") and len(k) >= 30
+    return (k.startswith("sk-") or len(k) >= 20)
 
 def get_provider() -> str:
     with _lock:
@@ -248,8 +248,9 @@ def stream_invoke(prompt, llm, inputs: dict, chunk_callback) -> str:
                         time.sleep(wait)
                         continue
 
-                if GroqAPIStatusError and isinstance(exc, GroqAPIStatusError) and getattr(exc, "status_code", None) == 413:
-                    logging.getLogger(__name__).warning("413 on Groq in streaming. Attempting model rotation or provider fallback.")
+                if GroqAPIStatusError and isinstance(exc, GroqAPIStatusError) and getattr(exc, "status_code", None) in (404, 413):
+                    status_code = getattr(exc, "status_code", None)
+                    logging.getLogger(__name__).warning("HTTP %s on Groq in streaming (%s). Attempting model rotation or provider fallback.", status_code, err_msg)
                     rotated = llm._rotate()
                     if not rotated:
                         provider = get_provider()

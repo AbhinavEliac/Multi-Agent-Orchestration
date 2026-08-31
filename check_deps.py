@@ -15,17 +15,21 @@ modules = [
     ("tavily",                    "tavily-python"),
     ("firecrawl",                 "firecrawl-py"),
     ("crawl4ai",                  "crawl4ai"),
+    ("playwright",                "playwright"),
     ("sentence_transformers",     "sentence-transformers"),
     ("openai",                    "openai"),
     ("groq",                      "groq"),
     ("markdownify",               "markdownify"),
     ("bs4",                       "beautifulsoup4"),
+    ("lxml",                      "lxml"),
     ("requests",                  "requests"),
     ("dotenv",                    "python-dotenv"),
     ("pandas",                    "pandas"),
     ("PIL",                       "Pillow"),
     ("httpx",                     "httpx"),
     ("langsmith",                 "langsmith"),
+    ("docx",                      "python-docx"),
+    ("reportlab",                 "reportlab"),
 ]
 
 missing = []
@@ -37,7 +41,7 @@ for mod, pkg in modules:
     except ImportError:
         missing.append((mod, pkg))
 
-print(f"OK ({len(ok)}):", ", ".join(ok))
+print(f"OK ({len(ok)}/{len(modules)}):", ", ".join(ok))
 print()
 if missing:
     print(f"MISSING ({len(missing)}):")

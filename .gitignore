@@ -40,3 +40,6 @@ thread_dump.txt
 # Generated image assets
 generated_images/*
 !generated_images/.gitkeep
+data/custom_images/*
+!data/custom_images/.gitkeep
+

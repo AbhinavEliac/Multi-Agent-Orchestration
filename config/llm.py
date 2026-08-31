@@ -19,7 +19,7 @@ import re
 import time
 
 from langchain_groq import ChatGroq
-from groq import RateLimitError, APIStatusError
+from groq import RateLimitError, APIStatusError, NotFoundError
 
 from config import settings as _settings
 
@@ -27,16 +27,16 @@ logger = logging.getLogger(__name__)
 
 # ── Rotation pool ──────────────────────────────────────────────────────────
 _MODEL_POOL: list[str] = [
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
 ]
 
 # Per-model TPM caps (approximate free-tier limits).
 # Used to decide whether a 413 should rotate (model genuinely too small)
 # or sleep-and-retry (hit per-minute window on a capable model).
 _MODEL_TPM: dict[str, int] = {
-    "llama-3.3-70b-versatile": 6_000,
     "llama-3.1-8b-instant":    30_000,
+    "llama-3.3-70b-versatile": 6_000,
 }
 
 _configured   = _settings.MODEL
@@ -199,8 +199,38 @@ class RotatingChatGroq:
                 else:
                     raise
 
-            except APIStatusError as exc:
-                if exc.status_code == 413:
+            except (APIStatusError, NotFoundError) as exc:
+                status_code = getattr(exc, "status_code", None)
+                if isinstance(exc, NotFoundError) or status_code == 404:
+                    msg = str(exc)
+                    logger.warning("HTTP 404 on %s: %s. Attempting model rotation or provider fallback.", _active_model, msg)
+                    rotated = self._rotate()
+                    if not rotated:
+                        from config.llm_registry import get_provider, _is_valid_gemini_key, _is_valid_openai_key
+                        provider = get_provider()
+                        if provider == "groq":
+                            if _is_valid_gemini_key(_settings.GEMINI_API_KEY):
+                                provider = "gemini"
+                            elif _is_valid_openai_key(_settings.OPENAI_API_KEY):
+                                provider = "openai"
+                        if provider != "groq":
+                            logger.warning("Groq 404 on all models. Falling back dynamically to '%s'.", provider)
+                            if provider == "openai":
+                                from config.openai_llm import OpenAIChatLLM
+                                fallback_llm = OpenAIChatLLM(max_tokens=self._max_tokens)
+                            else:
+                                from config.gemini_llm import GeminiChatLLM
+                                fallback_llm = GeminiChatLLM(max_tokens=self._max_tokens)
+                            self._client = fallback_llm._client
+                            self._invoke_chain = fallback_llm._invoke_chain
+                            raise _RotationOccurred() from exc
+                        raise RuntimeError(
+                            f"Model {_active_model} was not found on Groq and no alternative provider is configured. "
+                            "Please check your Groq API key or select Gemini / OpenAI in settings."
+                        ) from exc
+                    raise _RotationOccurred() from exc
+
+                if status_code == 413:
                     msg = str(exc)
                     logger.warning("HTTP 413 on %s: %s. Attempting model rotation or provider fallback.", _active_model, msg)
                     rotated = self._rotate()
@@ -229,9 +259,40 @@ class RotatingChatGroq:
                         ) from exc
                     raise _RotationOccurred() from exc
 
-                if exc.status_code < 500:
+                if status_code and status_code < 500:
                     raise
                 time.sleep(10)
+                raise
+
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "model_not_found" in msg or "does not exist" in msg or "404" in msg or "invalid_request_error" in msg:
+                    logger.warning("Model error on %s: %s. Attempting model rotation or provider fallback.", _active_model, exc)
+                    rotated = self._rotate()
+                    if not rotated:
+                        from config.llm_registry import get_provider, _is_valid_gemini_key, _is_valid_openai_key
+                        provider = get_provider()
+                        if provider == "groq":
+                            if _is_valid_gemini_key(_settings.GEMINI_API_KEY):
+                                provider = "gemini"
+                            elif _is_valid_openai_key(_settings.OPENAI_API_KEY):
+                                provider = "openai"
+                        if provider != "groq":
+                            logger.warning("Groq model error on all models. Falling back dynamically to '%s'.", provider)
+                            if provider == "openai":
+                                from config.openai_llm import OpenAIChatLLM
+                                fallback_llm = OpenAIChatLLM(max_tokens=self._max_tokens)
+                            else:
+                                from config.gemini_llm import GeminiChatLLM
+                                fallback_llm = GeminiChatLLM(max_tokens=self._max_tokens)
+                            self._client = fallback_llm._client
+                            self._invoke_chain = fallback_llm._invoke_chain
+                            raise _RotationOccurred() from exc
+                        raise RuntimeError(
+                            f"Model {_active_model} failed on Groq and no alternative provider is configured. "
+                            "Please check your Groq API key or select Gemini / OpenAI in settings."
+                        ) from exc
+                    raise _RotationOccurred() from exc
                 raise
 
 

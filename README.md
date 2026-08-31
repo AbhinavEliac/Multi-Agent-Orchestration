@@ -32,32 +32,70 @@ Given a source blog URL, the pipeline scrapes the content, runs a baseline evalu
 *   🤖 **Multi-Agent Collaboration:** Managed with **LangGraph**, routing tasks between baseline evaluators, planners, research supervisors, facts/language/SEO/GEO reviewers, and prose writers.
 *   📊 **6-Dimension Evaluation Rubric:** Scores articles on *Language*, *Facts*, *Structure*, *SEO*, *GEO*, and *Freshness*, comparing baseline vs. enhanced scores.
 *   ⚡ **Mixed-Provider Routing:** Runs token-heavy analysis tasks on ultra-fast Groq APIs (free/fast tier) while reserving user-selected models (Gemini/OpenAI) for premium prose generation.
-*   🔍 **Supervisor Research Pattern:** Employs a supervisor agent that coordinates a Tavily search and constructs five specific research briefs for specialist agents, preventing token bloat.
-*   🛡️ **Fault-Tolerant State & UI Recovery:** Interacts with an SQLite database that flushes state every `0.8s`. If the Streamlit window is refreshed or disconnected, the run continues running in the background and recovers gracefully.
-*   🎨 **Interactive Streamlit Dashboard:** Features a beautiful three-tab UI:
-    *   **New Blog:** Generation options, settings, and real-time execution.
-    *   **Active Jobs:** Polling progress and streaming output from active background tasks.
-    *   **History:** Complete log of previous runs, metrics, and comparisons.
+*   ⚡ **Ultra-Fast Sub-60s Generation (Turbo Mode):** Parallelizes 6 specialist analysis agents across concurrent threads, reducing turnaround time from ~3 minutes to **under 45 seconds**.
+*   🤖 **Multi-Agent Collaboration:** Managed with **LangGraph**, routing tasks between baseline evaluators, planners, research supervisors, parallel specialist reviewers, and prose writers.
+*   🖼️ **Custom Images & Contextual Placement:** Upload multiple custom images with individual captions, context descriptions, and placement hints. The agents analyze these details to embed each image at its most relevant section.
+*   📥 **1-Click Clean Export (DOCX & PDF):** Export the generated article directly to styled Microsoft Word (`.docx`) and Adobe PDF (`.pdf`) documents, completely omitting internal evaluation scores and debug logs.
+*   📊 **6-Dimension Evaluation Rubric:** Scores articles on *Language*, *Facts*, *Structure*, *SEO*, *GEO*, and *Freshness*, comparing baseline vs. enhanced scores.
+*   ⚡ **Mixed-Provider Routing:** Runs token-heavy analysis tasks on ultra-fast Groq APIs (free/fast tier) while reserving user-selected models (Gemini/OpenAI) for premium prose generation.
+*   🔍 **Supervisor Research Pattern:** Coordinates Tavily searches and constructs 5 dedicated research briefs for specialist agents, eliminating token waste.
+*   🛡️ **Fault-Tolerant State & UI Recovery:** SQLite database tracks job progress every `0.8s`. If disconnected or refreshed, jobs resume seamlessly.
 
 ---
 
 ## 🔄 Workflow Architecture
 
 ```mermaid
-graph TD
-    A[Scrape Blog URL] --> B[Evaluate Baseline Scores]
-    B --> C[Analyze Intent & Gaps]
-    C --> D[Generate SEO & Content Plan]
-    D --> E[Supervisor Research & Briefing]
-    E --> F[Multi-Dimension Agent Reviews]
-    F --> G[Draft Enhanced Prose]
-    G --> H{Scoring >= 90 / Iteration Cap?}
-    H -- No --> I[Targeted Research & Re-optimization]
-    I --> F
-    H -- Yes --> J[Save to DB & Display in Streamlit]
+flowchart TD
+    %% Styling
+    classDef prep fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef supervisor fill:#312e81,stroke:#6366f1,stroke-width:2px,color:#fff;
+    classDef parallel fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef writer fill:#701a75,stroke:#d946ef,stroke-width:2px,color:#fff;
+    classDef eval fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef export fill:#0f172a,stroke:#e2e8f0,stroke-width:2px,color:#fff;
+
+    Start([Input: Blog URL or Topic + Custom Images]) --> Scrape[⚡ Fast HTTP Scrape / Fallback Crawl4AI]:::prep
+    
+    subgraph Phase1 [Phase 1: Ingestion & Baseline]
+        Scrape --> Ingest[Background Vector Ingestion - Pinecone]:::prep
+        Scrape --> Baseline[Baseline Evaluator - 6 Dimensions]:::eval
+        Baseline --> Learner[Learner: Intent & Gap Analysis]:::prep
+        Learner --> Planner[Planner: Content & SEO Strategy]:::prep
+    end
+
+    Planner --> Supervisor[🔍 Supervisor: Focused Research Briefs]:::supervisor
+
+    subgraph Phase2 [Phase 2: Parallel Specialist Fan-Out (< 4s)]
+        Supervisor --> S1[Language Specialist]:::parallel
+        Supervisor --> S2[Facts & E-E-A-T Specialist]:::parallel
+        Supervisor --> S3[Structure Specialist]:::parallel
+        Supervisor --> S4[SEO Keyword Analyst]:::parallel
+        Supervisor --> S5[GEO / AI-Search Specialist]:::parallel
+        Supervisor --> S6[🖼️ Image & Custom Contextual Matcher]:::parallel
+    end
+
+    S1 & S2 & S3 & S4 & S5 & S6 --> Aggregator[✍️ Aggregator: Long-Form Article Synthesis]:::writer
+
+    subgraph Phase3 [Phase 3: Speed Profile & Routing]
+        Aggregator --> Eval[Evaluator: Score 6 Quality Dimensions]:::eval
+        Eval --> Router{Speed Mode?}:::eval
+        Router -- "⚡ Turbo (<45s)" --> Output
+        Router -- "⚖️ Balanced / 🔬 Deep" --> OptCheck{Scores >= 90 / Max Passes?}:::eval
+        OptCheck -- No --> Opt[Optimizer: Targeted Polish Rewrite]:::writer
+        Opt --> EvalPost[Evaluator Post-Optimization]:::eval
+        EvalPost --> Output
+        OptCheck -- Yes --> Output
+    end
+
+    subgraph Phase4 [Phase 4: Output & Export]
+        Output[Final Enhanced Blog Article]:::export --> UI[🖥️ Streamlit Interactive UI]:::export
+        Output --> DOCX[📥 Download Word .docx without scores]:::export
+        Output --> PDF[📄 Download Adobe PDF .pdf without scores]:::export
+    end
 ```
 
-Detailed architectural references, prompt definitions, and token-saving strategies can be found in the [ARCHITECTURE.md](file:///c:/Users/ADMIN/Downloads/blog/ARCHITECTURE.md) file.
+Detailed architectural references, prompt definitions, and token-saving strategies can be found in the [ARCHITECTURE.md](file:///c:/DS_and_AI/Projects_and_Tutorials/Projects/blog/ARCHITECTURE.md) file.
 
 ---
 

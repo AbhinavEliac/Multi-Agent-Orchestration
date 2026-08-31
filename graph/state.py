@@ -35,6 +35,11 @@ class BlogState(BaseModel):
 
     image_count: int = 3
 
+    custom_images: list[dict] = Field(default_factory=list)
+
+    # Generation speed profile: "turbo" (<45s) | "balanced" (60-90s) | "deep" (2-3m)
+    speed_mode: str = "turbo"
+
     current_date: str = Field(default_factory=lambda: date.today().isoformat())
 
     current_year: int = Field(default_factory=lambda: date.today().year)

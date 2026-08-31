@@ -168,114 +168,216 @@ class ImageAgent:
 
         return filtered
 
+    def _process_custom_images(self, custom_images: list[dict], markdown: str, state) -> list[dict]:
+        """
+        Contextually maps user-supplied custom images into blog sections using
+        the user's description, caption, and placement hints.
+        """
+        if not custom_images:
+            return []
+
+        # Extract available sections from markdown
+        sections = self._context_windows(markdown, max(len(custom_images), 4)) or self._fallback_contexts(state, len(custom_images))
+        processed = []
+        used_sections = set()
+
+        for idx, c_img in enumerate(custom_images):
+            img_path = c_img.get("image_path") or c_img.get("url") or ""
+            if not img_path:
+                continue
+
+            caption = c_img.get("caption") or ""
+            desc = c_img.get("description") or ""
+            hint = c_img.get("placement_hint") or ""
+            source = c_img.get("source") or "Custom Image"
+
+            # Combine signals to find the best matching section
+            combined_query = f"{caption} {desc} {hint}".lower().strip()
+            query_tokens = set(re.findall(r"\w{3,}", combined_query))
+
+            best_section = None
+            best_score = -1
+
+            for s in sections:
+                s_heading = s.get("heading", "")
+                s_context = s.get("context", "")
+                s_text = f"{s_heading} {s_context}".lower()
+                s_tokens = set(re.findall(r"\w{3,}", s_text))
+
+                overlap = len(query_tokens & s_tokens)
+                if s_heading in used_sections:
+                    overlap -= 2
+
+                if overlap > best_score:
+                    best_score = overlap
+                    best_section = s
+
+            # If no strong match, pick an unused section or round-robin
+            if not best_section or best_score <= 0:
+                available = [s for s in sections if s.get("heading") not in used_sections]
+                best_section = available[0] if available else sections[idx % len(sections)]
+
+            heading = best_section.get("heading", f"Section {idx+1}")
+            used_sections.add(heading)
+            context = best_section.get("context", desc or "Article body context")
+
+            # Formulate explicit placement guidance
+            if hint:
+                placement = f"Place in section '{heading}' - Note: {hint}. Context: '{desc or context[-80:]}'."
+            elif desc:
+                placement = f"Place immediately after the paragraph in '{heading}' that discusses: '{desc[:100]}'."
+            else:
+                placement = best_section.get("placement") or f"Place in section '{heading}'."
+
+            processed.append({
+                "url": img_path,
+                "caption": caption or desc or f"Illustration for {heading}",
+                "alt": caption or desc or f"{heading} image",
+                "source_url": source,
+                "context": f"{desc}. Section context: {context[:300]}".strip(),
+                "placement": placement,
+                "section": heading,
+                "is_custom": True,
+            })
+
+        return processed
+
     @traceable
     def invoke(self, state):
         if getattr(state, "image_output", None):
             return state
+
+        custom_images = getattr(state, "custom_images", []) or []
+        source_markdown = state.cleaned_blog
+        images: list[dict] = []
+        seen_urls: set[str] = set()
+
+        # 1. Process custom images first if provided
+        if custom_images:
+            processed_custom = self._process_custom_images(custom_images, source_markdown, state)
+            for img in processed_custom:
+                url = img.get("url")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    images.append(img)
+
+        # Total requested images
         count = max(0, min(int(state.image_count or 0), 20))
-        if count == 0:
+        
+        # If user explicitly provided custom images, ensure at least all custom images are included
+        target_total = max(count, len(images))
+        if target_total == 0:
             state.image_output = []
             return state
 
-        source_markdown = state.cleaned_blog
-        selected_sections = (
-            self._context_windows(source_markdown, count)
-            or self._fallback_contexts(state, count)
-        )
+        remaining = target_total - len(images)
 
-        images: list[dict] = []
-        seen_urls: set[str] = set()
-        fallback_sections: list[dict] = []
-
-        for section in selected_sections:
-            query = self._image_query(state, section)
-            candidates = search_image_candidates(
-                query,
-                max_results=12,
-                search_depth=self._search_depth(state.research_level),
-            )
-            candidates = self._filter_candidates(candidates, section)
-
-            found = select_relevant_images(
-                section["context"][:800],
-                section["heading"],
-                candidates,
-                limit=1,
+        # 2. If additional images are needed, fetch automated images
+        if remaining > 0:
+            selected_sections = (
+                self._context_windows(source_markdown, remaining)
+                or self._fallback_contexts(state, remaining)
             )
 
-            # Firecrawl fallback — only use if filter passes
-            if not found:
-                firecrawl_candidates = search_images(
+            fallback_sections: list[dict] = []
+
+            for section in selected_sections:
+                query = self._image_query(state, section)
+                candidates = search_image_candidates(
                     query,
-                    limit=3,
-                    context=section["context"][:500],
-                    placement=section["placement"],
+                    max_results=12,
+                    search_depth=self._search_depth(state.research_level),
                 )
-                found = self._filter_candidates(firecrawl_candidates, section)
-                if found:
-                    found = select_relevant_images(
-                        section["context"][:800],
-                        section["heading"],
-                        found,
-                        limit=1,
-                    )
+                candidates = self._filter_candidates(candidates, section)
 
-            if not found:
-                fallback_sections.append(section)
-                continue
-
-            found = [download_image(img, section["heading"]) for img in found]
-
-            for img in found:
-                url = img.get("url")
-                if not url or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                img.setdefault("context",   section["context"])
-                img.setdefault("placement", section["placement"])
-                img["section"] = section["heading"]
-                img["alt"] = img.get("alt") or f"{section['heading']} — {self._topic(state)}"
-                img["caption"] = img.get("caption") or img["alt"]
-                img["source_url"] = img.get("source_url") or img.get("remote_url") or url
-                images.append(img)
-
-        # Second pass for sections that returned nothing
-        for section in fallback_sections:
-            if len(images) >= count:
-                break
-
-            query = self._image_query(state, section)
-            candidates = self._filter_candidates(
-                search_image_candidates(query, max_results=10,
-                                        search_depth=self._search_depth(state.research_level)),
-                section,
-            )
-            found = select_relevant_images(
-                section["context"][:800], section["heading"], candidates, limit=1
-            )
-            if not found:
-                firecrawl_candidates = self._filter_candidates(
-                    search_images(query, limit=3,
-                                  context=section["context"][:500],
-                                  placement=section["placement"]),
-                    section,
-                )
                 found = select_relevant_images(
-                    section["context"][:800], section["heading"],
-                    firecrawl_candidates, limit=1,
-                ) if firecrawl_candidates else []
-            found = self._filter_candidates(found or [], section)
+                    section["context"][:800],
+                    section["heading"],
+                    candidates,
+                    limit=1,
+                )
 
-            for img in found:
-                dl = download_image(img, section["heading"])
-                url = dl.get("url")
-                if url and url not in seen_urls:
+                # Firecrawl fallback — only use if filter passes
+                if not found:
+                    firecrawl_candidates = search_images(
+                        query,
+                        limit=3,
+                        context=section["context"][:500],
+                        placement=section["placement"],
+                    )
+                    found = self._filter_candidates(firecrawl_candidates, section)
+                    if found:
+                        found = select_relevant_images(
+                            section["context"][:800],
+                            section["heading"],
+                            found,
+                            limit=1,
+                        )
+
+                if not found:
+                    fallback_sections.append(section)
+                    continue
+
+                found = [download_image(img, section["heading"]) for img in found]
+
+                for img in found:
+                    url = img.get("url")
+                    if not url or url in seen_urls:
+                        continue
                     seen_urls.add(url)
-                    dl.setdefault("context",   section["context"])
-                    dl.setdefault("placement", section["placement"])
-                    dl["section"] = section["heading"]
-                    dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
-                    images.append(dl)
+                    img.setdefault("context",   section["context"])
+                    img.setdefault("placement", section["placement"])
+                    img["section"] = section["heading"]
+                    img["alt"] = img.get("alt") or f"{section['heading']} — {self._topic(state)}"
+                    img["caption"] = img.get("caption") or img["alt"]
+                    img["source_url"] = img.get("source_url") or img.get("remote_url") or url
+                    images.append(img)
+                    if len(images) >= target_total:
+                        break
 
-        state.image_output = images[:count]
+                if len(images) >= target_total:
+                    break
+
+            # Second pass for fallback sections if still below target
+            if len(images) < target_total:
+                for section in fallback_sections:
+                    if len(images) >= target_total:
+                        break
+
+                    query = self._image_query(state, section)
+                    candidates = self._filter_candidates(
+                        search_image_candidates(query, max_results=10,
+                                                search_depth=self._search_depth(state.research_level)),
+                        section,
+                    )
+                    found = select_relevant_images(
+                        section["context"][:800], section["heading"], candidates, limit=1
+                    )
+                    if not found:
+                        firecrawl_candidates = self._filter_candidates(
+                            search_images(query, limit=3,
+                                          context=section["context"][:500],
+                                          placement=section["placement"]),
+                            section,
+                        )
+                        found = select_relevant_images(
+                            section["context"][:800], section["heading"],
+                            firecrawl_candidates, limit=1,
+                        ) if firecrawl_candidates else []
+                    found = self._filter_candidates(found or [], section)
+
+                    for img in found:
+                        dl = download_image(img, section["heading"])
+                        url = dl.get("url")
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            dl.setdefault("context",   section["context"])
+                            dl.setdefault("placement", section["placement"])
+                            dl["section"] = section["heading"]
+                            dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
+                            images.append(dl)
+                            if len(images) >= target_total:
+                                break
+
+        state.image_output = images[:target_total]
         return state

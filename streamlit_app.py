@@ -39,7 +39,8 @@ import threading
 
 def dump_threads():
     try:
-        with open(r"c:\Users\ADMIN\Downloads\blog\thread_dump.txt", "w", encoding="utf-8") as f:
+        dump_path = Path(__file__).resolve().parent / "thread_dump.txt"
+        with open(dump_path, "w", encoding="utf-8") as f:
             for thread_id, frame in sys._current_frames().items():
                 thread = threading._active.get(thread_id)
                 thread_name = thread.name if thread else "Unknown"
@@ -69,27 +70,28 @@ IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<url>[^)]+)\)")
 RECOMMENDED = {"easy": 3, "medium": 5, "advanced": 7}
 
 AGENT_STATUS = {
-    "prepare":             "Scraping & preparing source content",
-    "baseline_evaluator":  "Scoring original blog (baseline)",
-    "learner":             "Analysing blog intent and gaps",
-    "planner":             "Building SEO & content plan",
-    "supervisor":          "Supervisor — building 5 focused research briefs",
-    "language":            "Language review",
-    "facts":               "Facts & E-E-A-T review",
-    "structure":           "Structure review",
-    "image":               "Finding relevant images",
-    "seo":                 "SEO keyword analysis",
-    "geo":                 "GEO / AI-engine optimisation",
-    "aggregator":          "Writing first draft (streaming)",
-    "evaluator":           "Evaluating quality scores",
-    "optimizer":           "Optimising article (streaming)",
-    "targeted_researcher": "Targeted research for low-score sections",
-    "evaluator_post":      "Re-evaluating after optimisation",
+    "prepare":              "Scraping & preparing source content",
+    "baseline_evaluator":   "Scoring original blog (baseline)",
+    "learner":              "Analysing blog intent and gaps",
+    "planner":              "Building SEO & content plan",
+    "supervisor":           "Supervisor — building 5 focused research briefs",
+    "specialists_parallel": "⚡ Running 6 specialist reviews in parallel (Language, Facts, Structure, Images, SEO, GEO)",
+    "language":             "Language review",
+    "facts":                "Facts & E-E-A-T review",
+    "structure":            "Structure review",
+    "image":                "Finding relevant images",
+    "seo":                  "SEO keyword analysis",
+    "geo":                  "GEO / AI-engine optimisation",
+    "aggregator":           "Writing long-form draft (streaming)",
+    "evaluator":            "Evaluating quality scores",
+    "optimizer":            "Optimising article (streaming)",
+    "targeted_researcher":  "Targeted research for low-score sections",
+    "evaluator_post":       "Re-evaluating after optimisation",
 }
 
 AGENT_PCT = {
     "prepare": 2, "baseline_evaluator": 5, "learner": 8, "planner": 12,
-    "supervisor": 17, "language": 22, "facts": 27, "structure": 32,
+    "supervisor": 17, "specialists_parallel": 35, "language": 22, "facts": 27, "structure": 32,
     "image": 37, "seo": 41, "geo": 45, "aggregator": 50,
     "evaluator": 62, "optimizer": 68, "targeted_researcher": 78,
     "evaluator_post": 88,
@@ -159,6 +161,13 @@ def _show_tbl_or_md(tbuf: list) -> None:
     else:
         st.markdown("\n".join(tbuf))
 
+def _resolve_ui_image(url_str: str) -> str:
+    from utilis.exporter import _resolve_image_path
+    resolved = _resolve_image_path(url_str)
+    if resolved and resolved.exists():
+        return str(resolved)
+    return url_str
+
 def render_blog(md: str) -> None:
     lines, buf, tbuf, in_t = md.splitlines(), [], [], False
     for line in lines:
@@ -168,7 +177,8 @@ def render_blog(md: str) -> None:
             if tbuf:
                 _show_tbl_or_md(tbuf)
                 tbuf.clear(); in_t = False
-            st.image(img.group("url"), caption=img.group("alt") or None, use_container_width=True)
+            img_src = _resolve_ui_image(img.group("url"))
+            st.image(img_src, caption=img.group("alt") or None, use_container_width=True)
             continue
         if "|" in line and line.strip().startswith("|"):
             flush_md(buf); tbuf.append(line); in_t = True; continue
@@ -179,6 +189,57 @@ def render_blog(md: str) -> None:
     if tbuf:
         _show_tbl_or_md(tbuf)
     flush_md(buf)
+
+def render_export_buttons(article_text: str, title: str = "Blog Article", key_suffix: str = "") -> None:
+    """Renders 1-click download buttons for DOCX, PDF, and Markdown without scores."""
+    if not article_text:
+        return
+    from utilis.exporter import export_to_docx, export_to_pdf, clean_blog_markdown
+    
+    clean_text = clean_blog_markdown(article_text)
+    safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_") or "blog_article"
+    
+    st.markdown("<div style='margin: 0.5rem 0 1rem 0;'>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 1, 1])
+    
+    with c1:
+        try:
+            docx_data = export_to_docx(clean_text, default_title=title)
+            st.download_button(
+                label="📥 Download Word (.docx)",
+                data=docx_data,
+                file_name=f"{safe_title}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"dl_docx_{key_suffix}",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"DOCX export error: {e}")
+            
+    with c2:
+        try:
+            pdf_data = export_to_pdf(clean_text, default_title=title)
+            st.download_button(
+                label="📄 Download PDF (.pdf)",
+                data=pdf_data,
+                file_name=f"{safe_title}.pdf",
+                mime="application/pdf",
+                key=f"dl_pdf_{key_suffix}",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"PDF export error: {e}")
+            
+    with c3:
+        st.download_button(
+            label="📝 Download Markdown (.md)",
+            data=clean_text.encode("utf-8"),
+            file_name=f"{safe_title}.md",
+            mime="text/markdown",
+            key=f"dl_md_{key_suffix}",
+            use_container_width=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def score_table(bl: list, en: list, bo: int, no: int) -> None:
     st.markdown("""<style>
@@ -364,6 +425,7 @@ def render_run(run_id: int) -> None:
                 st.info("Not saved.")
         with t2:
             if art.enhanced_blog:
+                render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"run_{run.id}")
                 render_blog(art.enhanced_blog)
             else:
                 st.warning("Not generated.")
@@ -507,11 +569,13 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
         if result and result.image_output:
             enhanced_text = result.optimized_blog or result.aggregated_blog or ""
             for img in result.image_output:
+                if img.get("is_custom"):
+                    continue
                 local_p = img.get("local_path") or img.get("url")
                 remote_u = img.get("remote_url") or img.get("source_url")
-                if local_p and remote_u and enhanced_text:
+                if local_p and remote_u and enhanced_text and not img.get("is_custom"):
                     enhanced_text = enhanced_text.replace(local_p, remote_u)
-                if local_p and os.path.exists(local_p):
+                if local_p and os.path.exists(local_p) and not img.get("is_custom"):
                     try:
                         os.remove(local_p)
                     except Exception:
@@ -664,6 +728,21 @@ with st.sidebar:
     image_count = st.slider("Number of images", 0, 20, 3)
 
     st.divider()
+    st.subheader("⚡ Generation Speed Profile")
+    speed_mode_label = st.radio(
+        "Speed Profile",
+        ["⚡ Turbo (<45s)", "⚖️ Balanced (60–90s)", "🔬 Deep Analysis (2–3 mins)"],
+        index=0,
+        help="Turbo runs parallel specialist analysis with single-pass synthesis for <45s turnaround."
+    )
+    speed_mode_map = {
+        "⚡ Turbo (<45s)": "turbo",
+        "⚖️ Balanced (60–90s)": "balanced",
+        "🔬 Deep Analysis (2–3 mins)": "deep",
+    }
+    selected_speed_mode = speed_mode_map.get(speed_mode_label, "turbo")
+
+    st.divider()
     st.subheader("Research depth")
     research_results = st.slider("Search results to fetch", 3, 15, 5,
         help="3–4: fast. 5–7: default. 10–15: maximum depth.")
@@ -753,6 +832,63 @@ if nav_selection == "New Blog":
         main_url_val = ""
         mode = "generate"
 
+    # ── Custom Images Section ──────────────────────────────────────────────────
+    with st.expander("🖼️ Custom Images & Contextual Placement (Optional)", expanded=False):
+        st.markdown(
+            "Upload your own images and specify details/context for each. "
+            "The AI agent will analyze the details and place each image in the most relevant section of the blog."
+        )
+        uploaded_files = st.file_uploader(
+            "Upload image files",
+            type=["png", "jpg", "jpeg", "webp"],
+            accept_multiple_files=True,
+            key="custom_images_uploader"
+        )
+        custom_images_list = []
+        if uploaded_files:
+            custom_img_dir = Path.cwd() / "data" / "custom_images"
+            custom_img_dir.mkdir(parents=True, exist_ok=True)
+            st.markdown(f"**Configuring {len(uploaded_files)} Custom Image(s):**")
+            for idx, uf in enumerate(uploaded_files):
+                safe_name = re.sub(r"[^\w\.-]", "_", uf.name)
+                saved_path = custom_img_dir / f"custom_{idx}_{safe_name}"
+                with open(saved_path, "wb") as f:
+                    f.write(uf.getbuffer())
+                
+                with st.container():
+                    col_prev, col_fields = st.columns([1, 3])
+                    with col_prev:
+                        st.image(str(saved_path), caption=uf.name, use_container_width=True)
+                    with col_fields:
+                        c_caption = st.text_input(
+                            f"Caption #{idx+1}",
+                            value=Path(uf.name).stem.replace("_", " ").replace("-", " ").title(),
+                            key=f"c_cap_{idx}_{uf.name}",
+                            help="Displayed underneath the image in the blog"
+                        )
+                        c_desc = st.text_area(
+                            f"Context / Details #{idx+1}",
+                            value="",
+                            placeholder="Explain what this image illustrates and what topic or section it relates to...",
+                            key=f"c_desc_{idx}_{uf.name}",
+                            help="The AI uses this to match the image to the most appropriate section."
+                        )
+                        c_hint = st.text_input(
+                            f"Placement Hint (optional) #{idx+1}",
+                            value="",
+                            placeholder="e.g., In the introduction, or right after discussing architecture",
+                            key=f"c_hint_{idx}_{uf.name}"
+                        )
+                    
+                    custom_images_list.append({
+                        "image_path": str(saved_path),
+                        "caption": c_caption,
+                        "description": c_desc,
+                        "placement_hint": c_hint,
+                        "source": "Custom Upload"
+                    })
+                    st.markdown("<hr style='margin: 0.5rem 0; border-color: #2e3350;'/>", unsafe_allow_html=True)
+
     main_gen_btn = st.button("🚀 Start Generation Process", type="primary", use_container_width=True, key="main_gen_btn")
 
     if main_gen_btn:
@@ -772,6 +908,8 @@ if nav_selection == "New Blog":
                 language_quality=language_quality,
                 research_level=rl, research_results=research_results,
                 image_count=image_count, max_optimizer_passes=max_passes,
+                custom_images=custom_images_list,
+                speed_mode=selected_speed_mode,
                 target_length=target_length(mp),
                 llm_provider=selected_provider, stream_queue=sq,
                 job_id=job_id,
@@ -832,6 +970,7 @@ if nav_selection == "New Blog":
                     st.info("Not saved.")
             with t2:
                 if art.enhanced_blog:
+                    render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"last_{run.id}")
                     render_blog(art.enhanced_blog)
                 else:
                     st.warning("Not generated.")

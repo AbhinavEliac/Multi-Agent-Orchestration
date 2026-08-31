@@ -1,7 +1,14 @@
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 import os
 
-ENV_PATH = r"C:\Users\ADMIN\Downloads\blog\.env"
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
+
+if not ENV_PATH.exists():
+    found = find_dotenv()
+    if found:
+        ENV_PATH = Path(found)
 
 load_dotenv(ENV_PATH, override=True)
 
@@ -11,25 +18,26 @@ def _get_env(*names, default=None):
     for name in names:
         value = os.getenv(name)
 
-        if value:
-            val = value.strip().strip('"').strip("'")
+        if value is not None and value != "":
+            val = str(value).strip().strip('"').strip("'")
             if val.startswith("-") and not val.startswith("-sk-"):
                 val = val.lstrip("-")
             return val
 
     try:
-        with open(ENV_PATH, "r", encoding="utf-8") as env_file:
-            for line in env_file:
-                if "=" not in line:
-                    continue
+        if ENV_PATH.exists():
+            with open(ENV_PATH, "r", encoding="utf-8") as env_file:
+                for line in env_file:
+                    if "=" not in line:
+                        continue
 
-                key, value = line.split("=", 1)
+                    key, value = line.split("=", 1)
 
-                if key.strip() in names:
-                    val = value.strip().strip('"').strip("'")
-                    if val.startswith("-") and not val.startswith("-sk-"):
-                        val = val.lstrip("-")
-                    return val
+                    if key.strip() in names:
+                        val = value.strip().strip('"').strip("'")
+                        if val.startswith("-") and not val.startswith("-sk-"):
+                            val = val.lstrip("-")
+                        return val
     except OSError:
         pass
 
@@ -73,7 +81,7 @@ class Settings:
     def NEMOTRON_BASE_URL(self):
         return _get_env("NEMOTRON_BASE_URL", default="https://openrouter.ai/api/v1")
 
-    MODEL = _get_env("GROQ_MODEL", "MODEL", default="meta-llama/llama-4-scout-17b-16e-instruct")
+    MODEL = _get_env("GROQ_MODEL", "MODEL", default="llama-3.1-8b-instant")
 
     OPENAI_MODEL = _get_env("OPENAI_MODEL", default="gpt-4o")
 
@@ -93,10 +101,10 @@ class Settings:
 
     EMBEDDING_DIMENSION = int(_get_env("EMBEDDING_DIMENSION", default="384"))
 
-    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE"))
+    CHUNK_SIZE = int(_get_env("CHUNK_SIZE", default="1000"))
 
-    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP"))
+    CHUNK_OVERLAP = int(_get_env("CHUNK_OVERLAP", default="200"))
 
-    TOP_K = int(os.getenv("TOP_K"))
+    TOP_K = int(_get_env("TOP_K", default="5"))
 
 settings = Settings()

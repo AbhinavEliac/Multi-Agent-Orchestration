@@ -56,6 +56,9 @@ from rag.scraper import scrape_blog
 from utilis.tracing import traceable
 
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
 @traceable
 def prepare_blog(state: BlogState):
     if getattr(state, "job_id", 0):
@@ -91,7 +94,60 @@ def prepare_blog(state: BlogState):
     state.raw_blog = scraped["html"]
     state.cleaned_blog = html_to_markdown(clean_html(state.raw_blog))
     state.chunks = create_chunks(state.cleaned_blog)
-    ingest_blog(state.chunks, state.url)
+    
+    # Asynchronous Pinecone indexing in background so the pipeline advances immediately
+    threading.Thread(target=ingest_blog, args=(state.chunks, state.url), daemon=True).start()
+    return state
+
+
+@traceable
+def specialists_parallel(state: BlogState) -> BlogState:
+    """
+    Executes Language, Facts, Structure, Image, SEO, and GEO specialist agents
+    simultaneously in a thread pool for 5-7x faster turnaround.
+    """
+    state.active_agent = "specialists_parallel"
+    if hasattr(state, "active_agent_callback") and state.active_agent_callback:
+        try:
+            state.active_agent_callback("specialists_parallel")
+        except Exception:
+            pass
+
+    if getattr(state, "job_id", 0):
+        from db.database import BlogDatabase
+        if BlogDatabase().is_cancel_requested(state.job_id):
+            raise RuntimeError("Cancelled by user.")
+        LAST_ACTIVE_STATE[state.job_id] = state.copy()
+
+    lang_agent = LanguageAgent()
+    facts_agent = FactsAgent()
+    struct_agent = StructureAgent()
+    img_agent = ImageAgent()
+    seo_agent = SeoAgent()
+    geo_agent = GeoAgent()
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        f_lang = executor.submit(lang_agent.invoke, state.copy())
+        f_facts = executor.submit(facts_agent.invoke, state.copy())
+        f_struct = executor.submit(struct_agent.invoke, state.copy())
+        f_img = executor.submit(img_agent.invoke, state.copy())
+        f_seo = executor.submit(seo_agent.invoke, state.copy())
+        f_geo = executor.submit(geo_agent.invoke, state.copy())
+
+        r_lang = f_lang.result()
+        r_facts = f_facts.result()
+        r_struct = f_struct.result()
+        r_img = f_img.result()
+        r_seo = f_seo.result()
+        r_geo = f_geo.result()
+
+    state.language_output = r_lang.language_output
+    state.facts_output = r_facts.facts_output
+    state.structure_output = r_struct.structure_output
+    state.image_output = r_img.image_output
+    state.seo_output = r_seo.seo_output
+    state.geo_output = r_geo.geo_output
+
     return state
 
 
@@ -137,6 +193,7 @@ workflow.add_node("baseline_evaluator",   _wrap("baseline_evaluator",  BaselineE
 workflow.add_node("learner",              _wrap("learner",              LearnerAgent))
 workflow.add_node("planner",              _wrap("planner",              PlannerAgent))
 workflow.add_node("supervisor",           _wrap("supervisor",           SupervisorAgent))
+workflow.add_node("specialists_parallel", specialists_parallel)
 workflow.add_node("language",             _wrap("language",             LanguageAgent))
 workflow.add_node("facts",                _wrap("facts",                FactsAgent))
 workflow.add_node("structure",            _wrap("structure",            StructureAgent))
@@ -159,6 +216,7 @@ workflow.add_conditional_edges(
         "baseline_evaluator": "baseline_evaluator",
         "learner": "learner",
         "supervisor": "supervisor",
+        "specialists_parallel": "specialists_parallel",
         "language": "language",
         "facts": "facts",
         "structure": "structure",
@@ -175,14 +233,10 @@ workflow.add_conditional_edges(
 workflow.add_edge("baseline_evaluator", "learner")
 workflow.add_edge("learner",    "planner")
 workflow.add_edge("planner",    "supervisor")   # supervisor replaces researcher
-workflow.add_edge("supervisor", "language")
-workflow.add_edge("language",   "facts")
-workflow.add_edge("facts",      "structure")
-workflow.add_edge("structure",  "image")
-workflow.add_edge("image",      "seo")
-workflow.add_edge("seo",        "geo")
-workflow.add_edge("geo",        "aggregator")
+workflow.add_edge("supervisor", "specialists_parallel")
+workflow.add_edge("specialists_parallel", "aggregator")
 workflow.add_edge("aggregator", "evaluator")
+
 
 # evaluation_router re-runs supervisor (not researcher) when freshness < 70
 # so all 5 briefs get refreshed from new search results.

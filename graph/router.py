@@ -47,6 +47,9 @@ def evaluation_router(state: BlogState) -> str:
     Sends failing dimensions back to their specialist for a revised brief.
     Once all dimensions ≥70, proceed to optimizer.
     """
+    if getattr(state, "speed_mode", "turbo") == "turbo":
+        return "optimizer"
+
     if state.iteration >= MAX_SPECIALIST_ITERATIONS:
         return "optimizer"
 
@@ -76,11 +79,15 @@ def optimizer_router(state: BlogState) -> str:
     Called after the optimizer has written/rewritten the article.
 
     Priority:
-    1. Any score <70 AND targeted budget remaining → targeted_researcher
-    2. All ≥90 → end
-    3. Any <90 AND optimizer budget remaining → optimizer (polish pass)
-    4. Budget exhausted → end
+    1. In turbo mode → end immediately (fastest <45s)
+    2. Any score <70 AND targeted budget remaining → targeted_researcher
+    3. All ≥90 → end
+    4. Any <90 AND optimizer budget remaining → optimizer (polish pass)
+    5. Budget exhausted → end
     """
+    if getattr(state, "speed_mode", "turbo") == "turbo":
+        return "end"
+
     needs_research = (
         state.language_score  < 70
         or state.facts_score     < 70
@@ -90,14 +97,9 @@ def optimizer_router(state: BlogState) -> str:
         or state.freshness_score < 70
     )
 
-    # Count how many times targeted_researcher has already fired.
-    # targeted_research_output is set by targeted_researcher; we track via
-    # optimizer_iteration as a proxy — each targeted run increments it.
     targeted_runs = getattr(state, "_targeted_runs", 0)
 
     if needs_research and targeted_runs < MAX_TARGETED_ITERATIONS:
-        # Increment the internal counter via a side-channel on state.
-        # BlogState is a Pydantic model so we use object.__setattr__.
         object.__setattr__(state, "_targeted_runs", targeted_runs + 1)
         return "targeted_researcher"
 
@@ -113,7 +115,9 @@ def optimizer_router(state: BlogState) -> str:
     if all_pass:
         return "end"
 
-    if state.optimizer_iteration >= state.max_optimizer_passes:
+    max_passes = 1 if getattr(state, "speed_mode", "turbo") == "balanced" else state.max_optimizer_passes
+    if state.optimizer_iteration >= max_passes:
         return "end"
 
     return "optimizer"
+
