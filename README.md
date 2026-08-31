@@ -27,17 +27,14 @@ Given a source blog URL, the pipeline scrapes the content, runs a baseline evalu
 
 ---
 
-## 🌟 Key Features
-
-*   🤖 **Multi-Agent Collaboration:** Managed with **LangGraph**, routing tasks between baseline evaluators, planners, research supervisors, facts/language/SEO/GEO reviewers, and prose writers.
-*   📊 **6-Dimension Evaluation Rubric:** Scores articles on *Language*, *Facts*, *Structure*, *SEO*, *GEO*, and *Freshness*, comparing baseline vs. enhanced scores.
-*   ⚡ **Mixed-Provider Routing:** Runs token-heavy analysis tasks on ultra-fast Groq APIs (free/fast tier) while reserving user-selected models (Gemini/OpenAI) for premium prose generation.
+*   💻 **Offline / Local GPU Mode (Ollama & LM Studio):** Run the entire blog generation pipeline 100% locally on your GPU/CPU with **Qwen 2.5**, **Llama 3.2**, **Mistral**, or **DeepSeek-R1** with zero API costs and full data privacy.
+*   🔀 **Hybrid Execution Mode:** Execute fast multi-agent specialist analysis locally on your GPU at zero cost, then hand off to Cloud models (Gemini 2.5 Flash / GPT-4o) for high-end long-form prose writing.
 *   ⚡ **Ultra-Fast Sub-60s Generation (Turbo Mode):** Parallelizes 6 specialist analysis agents across concurrent threads, reducing turnaround time from ~3 minutes to **under 45 seconds**.
-*   🤖 **Multi-Agent Collaboration:** Managed with **LangGraph**, routing tasks between baseline evaluators, planners, research supervisors, parallel specialist reviewers, and prose writers.
 *   🖼️ **Custom Images & Contextual Placement:** Upload multiple custom images with individual captions, context descriptions, and placement hints. The agents analyze these details to embed each image at its most relevant section.
 *   📥 **1-Click Clean Export (DOCX & PDF):** Export the generated article directly to styled Microsoft Word (`.docx`) and Adobe PDF (`.pdf`) documents, completely omitting internal evaluation scores and debug logs.
+*   🤖 **Multi-Agent Collaboration (LangGraph):** Routes tasks between baseline evaluators, planners, research supervisors, parallel specialist reviewers, and prose writers.
 *   📊 **6-Dimension Evaluation Rubric:** Scores articles on *Language*, *Facts*, *Structure*, *SEO*, *GEO*, and *Freshness*, comparing baseline vs. enhanced scores.
-*   ⚡ **Mixed-Provider Routing:** Runs token-heavy analysis tasks on ultra-fast Groq APIs (free/fast tier) while reserving user-selected models (Gemini/OpenAI) for premium prose generation.
+*   ⚡ **Mixed-Provider Cloud Routing:** Runs token-heavy analysis tasks on ultra-fast Groq APIs (free/fast tier) while reserving user-selected models (Gemini/OpenAI) for premium prose generation.
 *   🔍 **Supervisor Research Pattern:** Coordinates Tavily searches and constructs 5 dedicated research briefs for specialist agents, eliminating token waste.
 *   🛡️ **Fault-Tolerant State & UI Recovery:** SQLite database tracks job progress every `0.8s`. If disconnected or refreshed, jobs resume seamlessly.
 

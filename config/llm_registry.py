@@ -54,11 +54,33 @@ _OPENAI_MAX_TOKENS: dict[str, int] = {
 }
 
 
-# ── Provider management ────────────────────────────────────────────────────────
+# ── Provider & Execution Mode management ──────────────────────────────────────
+
+_execution_mode = "online"  # "online" | "offline" | "hybrid"
+_local_engine = "ollama"
+_local_model_name = "qwen2.5:7b"
+_local_base_url = "http://localhost:11434/v1"
+_local_api_key = "ollama"
 
 _custom_model_name = ""
 _custom_api_key = ""
 _custom_base_url = ""
+
+
+def set_execution_mode(
+    mode: str = "online",
+    local_engine: str = "ollama",
+    local_model_name: str = "qwen2.5:7b",
+    local_base_url: str = "http://localhost:11434/v1",
+    local_api_key: str = "ollama",
+) -> None:
+    global _execution_mode, _local_engine, _local_model_name, _local_base_url, _local_api_key
+    with _lock:
+        _execution_mode = (mode or "online").lower().strip()
+        _local_engine = local_engine or "ollama"
+        _local_model_name = local_model_name or "qwen2.5:7b"
+        _local_base_url = local_base_url or "http://localhost:11434/v1"
+        _local_api_key = local_api_key or "ollama"
 
 
 def set_custom_llm_settings(model_name: str, api_key: str, base_url: str) -> None:
@@ -77,7 +99,7 @@ def set_provider(name: str) -> None:
     so LangChain internals don't auto-validate it and hit quota.
     """
     global _provider
-    allowed = {"groq", "openai", "gemini", "custom"}
+    allowed = {"groq", "openai", "gemini", "custom", "local", "ollama", "lmstudio"}
     name = name.lower().strip()
     if name not in allowed:
         raise ValueError(f"Unknown LLM provider '{name}'. Choose from: {allowed}")
@@ -101,6 +123,10 @@ def get_provider() -> str:
     with _lock:
         return _provider
 
+def get_execution_mode() -> str:
+    with _lock:
+        return _execution_mode
+
 
 # ── LLM factory ───────────────────────────────────────────────────────────────
 
@@ -108,25 +134,50 @@ def make_llm(max_tokens: int | None = None, size: str = "large", force_groq: boo
     """
     Factory used by every agent.
 
+    Supports:
+        Online Mode:  Analysis agents -> Groq (rotating), Prose -> Gemini/OpenAI/Groq
+        Offline Mode: All agents -> LocalChatLLM (Ollama/LM Studio on GPU)
+        Hybrid Mode:  Analysis agents -> LocalChatLLM, Prose -> Cloud (Gemini/OpenAI)
+
     Args:
         max_tokens:  Explicit token budget. Overrides size preset if provided.
         size:        "small" | "medium" | "large" — role-based token preset.
-        force_groq:  If True, always return a RotatingChatGroq instance
-                     regardless of the globally selected provider.
-                     Use this for every agent that does NOT write long-form
-                     prose (evaluators, specialists, researchers, etc.)
-                     to preserve Gemini/OpenAI quota for the aggregator
-                     and optimizer only.
+        force_groq:  If True, flags this agent as an analysis/specialist agent.
 
     Returns:
-        RotatingChatGroq | OpenAIChatLLM | GeminiChatLLM
+        LocalChatLLM | RotatingChatGroq | OpenAIChatLLM | GeminiChatLLM
     """
     with _lock:
         provider = _provider
+        mode = _execution_mode
+        loc_model = _local_model_name
+        loc_base = _local_base_url
+        loc_key = _local_api_key
 
     size = size if size in ("small", "medium", "large") else "large"
+    tokens = max_tokens if max_tokens is not None else _GROQ_MAX_TOKENS[size]
 
-    # Analysis agents always use Groq — fast, free, no quota pressure
+    # 1. 💻 100% Offline Mode — Route ALL agents to local GPU LLM
+    if mode == "offline" or provider in ("local", "ollama", "lmstudio"):
+        from config.local_llm import LocalChatLLM
+        return LocalChatLLM(
+            model=loc_model,
+            base_url=loc_base,
+            api_key=loc_key,
+            max_tokens=tokens,
+        )
+
+    # 2. 🔀 Hybrid Mode — Analysis on Local GPU, Prose on Cloud
+    if mode == "hybrid" and force_groq:
+        from config.local_llm import LocalChatLLM
+        return LocalChatLLM(
+            model=loc_model,
+            base_url=loc_base,
+            api_key=loc_key,
+            max_tokens=tokens,
+        )
+
+    # 3. 🌐 Online Cloud Mode (or Hybrid Prose)
     use_groq = force_groq or provider == "groq"
     if use_groq:
         import logging
@@ -147,27 +198,25 @@ def make_llm(max_tokens: int | None = None, size: str = "large", force_groq: boo
 
     if use_groq:
         from config.llm import RotatingChatGroq
-        tokens = max_tokens if max_tokens is not None else _GROQ_MAX_TOKENS[size]
         return RotatingChatGroq(max_tokens=tokens)
 
     if provider == "custom":
         from config.openai_llm import OpenAIChatLLM
-        tokens = max_tokens if max_tokens is not None else _OPENAI_MAX_TOKENS[size]
+        t_custom = max_tokens if max_tokens is not None else _OPENAI_MAX_TOKENS[size]
         with _lock:
             model = _custom_model_name
             api_key = _custom_api_key
             base_url = _custom_base_url
-        return OpenAIChatLLM(max_tokens=tokens, model_override=model, api_key=api_key, base_url=base_url)
+        return OpenAIChatLLM(max_tokens=t_custom, model_override=model, api_key=api_key, base_url=base_url)
 
     if provider == "openai":
         from config.openai_llm import OpenAIChatLLM
-        tokens = max_tokens if max_tokens is not None else _OPENAI_MAX_TOKENS[size]
-        model  = _OPENAI_MODEL[size]
-        return OpenAIChatLLM(max_tokens=tokens, model_override=model)
+        t_openai = max_tokens if max_tokens is not None else _OPENAI_MAX_TOKENS[size]
+        model = _OPENAI_MODEL[size]
+        return OpenAIChatLLM(max_tokens=t_openai, model_override=model)
 
     # gemini — prose provider
     from config.gemini_llm import GeminiChatLLM
-    tokens = max_tokens if max_tokens is not None else _GROQ_MAX_TOKENS[size]
     return GeminiChatLLM(max_tokens=tokens)
 
 

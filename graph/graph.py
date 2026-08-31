@@ -71,6 +71,15 @@ def prepare_blog(state: BlogState):
         from config.llm_registry import set_custom_llm_settings
         set_custom_llm_settings(state.custom_model_name, state.custom_api_key, state.custom_base_url)
 
+    from config.llm_registry import set_execution_mode
+    set_execution_mode(
+        mode=getattr(state, "execution_mode", "online"),
+        local_engine=getattr(state, "local_engine", "ollama"),
+        local_model_name=getattr(state, "local_model_name", "qwen2.5:7b"),
+        local_base_url=getattr(state, "local_base_url", "http://localhost:11434/v1"),
+        local_api_key=getattr(state, "local_api_key", "ollama"),
+    )
+
     state.active_agent = "prepare"
     if hasattr(state, "active_agent_callback") and state.active_agent_callback:
         try:

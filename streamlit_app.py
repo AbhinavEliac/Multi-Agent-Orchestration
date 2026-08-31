@@ -598,9 +598,15 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
                 result_json = result.json()
             except Exception:
                 result_json = ""
+        provider_display = settings.get("provider", "groq")
+        if getattr(state, "execution_mode", "online") == "offline":
+            provider_display = f"Local ({getattr(state, 'local_engine', 'ollama')}: {getattr(state, 'local_model_name', 'local')})"
+        elif getattr(state, "execution_mode", "online") == "hybrid":
+            provider_display = f"Hybrid (Local {getattr(state, 'local_model_name', 'local')} + {settings.get('provider', '')})"
+
         run_id = db.save_run(
             url=state.url, title=result.title, duration_seconds=elapsed,
-            llm_provider=settings["provider"], research_level=settings["research_level"],
+            llm_provider=provider_display, research_level=settings["research_level"],
             language_quality=settings["language_quality"], max_pages=settings["max_pages"],
             image_count=settings["image_count"],
             optimizer_iterations=result.optimizer_iteration,
@@ -688,26 +694,89 @@ st.title("Blog Enhancer")
 # ── Sidebar settings ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Settings")
-    provider_label   = st.selectbox("LLM Provider", list(PROVIDER_INFO.keys()), key="sidebar_provider_label")
-    selected_provider = PROVIDER_INFO[provider_label]
-    if selected_provider == "openai":
-        from config import settings
-        from config.llm_registry import _is_valid_openai_key
-        if not _is_valid_openai_key(settings.OPENAI_API_KEY):
-            st.error("⚠️ OPENAI_API_KEY in .env is missing or invalid! (Must start with 'sk-').")
+    
+    # ── Execution Mode ────────────────────────────────────────────────────────
+    st.subheader("🤖 Execution Mode")
+    exec_mode_label = st.radio(
+        "Mode",
+        [
+            "🌐 Online Cloud (Groq / Gemini / OpenAI)",
+            "💻 Offline Local GPU (Ollama / LM Studio)",
+            "🔀 Hybrid (Local GPU Analysis + Cloud Prose)",
+        ],
+        index=0,
+        key="sidebar_exec_mode",
+        help="Offline runs 100% locally on your GPU/CPU with zero API costs. Hybrid uses local GPU for fast private analysis and Cloud for prose."
+    )
+    exec_mode_map = {
+        "🌐 Online Cloud (Groq / Gemini / OpenAI)": "online",
+        "💻 Offline Local GPU (Ollama / LM Studio)": "offline",
+        "🔀 Hybrid (Local GPU Analysis + Cloud Prose)": "hybrid",
+    }
+    selected_exec_mode = exec_mode_map[exec_mode_label]
+
+    local_engine = "ollama"
+    local_model_name = "qwen2.5:7b"
+    local_base_url = "http://localhost:11434/v1"
+    local_api_key = "ollama"
+
+    # Local LLM Controls (if Offline or Hybrid)
+    if selected_exec_mode in ("offline", "hybrid"):
+        from config.local_llm import discover_ollama_models, discover_lmstudio_models, OLLAMA_DEFAULT_BASE_URL, LMSTUDIO_DEFAULT_BASE_URL
+        
+        st.markdown("**Local LLM Engine**")
+        local_engine = st.selectbox("Engine", ["Ollama", "LM Studio", "Custom Local URL"], key="local_engine_select")
+        
+        if local_engine == "Ollama":
+            local_base_url = st.text_input("Ollama URL", value=OLLAMA_DEFAULT_BASE_URL, key="ollama_base_url")
+            is_ok, models_found, status_msg = discover_ollama_models(local_base_url)
+            if is_ok:
+                st.caption(f"🟢 **Status**: {status_msg}")
+                local_model_name = st.selectbox("Ollama Model", models_found, key="ollama_model_select")
+            else:
+                st.caption(f"🔴 **Status**: {status_msg}")
+                local_model_name = st.text_input("Model Name", value="qwen2.5:7b", key="ollama_model_manual")
+                
+        elif local_engine == "LM Studio":
+            local_base_url = st.text_input("LM Studio URL", value=LMSTUDIO_DEFAULT_BASE_URL, key="lmstudio_base_url")
+            is_ok, models_found, status_msg = discover_lmstudio_models(local_base_url)
+            if is_ok:
+                st.caption(f"🟢 **Status**: {status_msg}")
+                local_model_name = st.selectbox("LM Studio Model", models_found, key="lmstudio_model_select")
+            else:
+                st.caption(f"🔴 **Status**: {status_msg}")
+                local_model_name = st.text_input("Model Name", value="local-model", key="lmstudio_model_manual")
         else:
-            st.info("GPT-4o — costs apply.", icon="ℹ️")
-    elif selected_provider == "gemini":
-        from config import settings
-        from config.llm_registry import _is_valid_gemini_key
-        if not _is_valid_gemini_key(settings.GEMINI_API_KEY):
-            st.error("⚠️ GEMINI_API_KEY in .env is missing or invalid! (Must start with 'AIzaSy').")
-        else:
-            st.info("Gemini 2.0 Flash — free tier.", icon="ℹ️")
-    elif selected_provider == "custom":
-        st.text_input("Custom Model Name", value="gpt-4o-mini", key="custom_model_name")
-        st.text_input("Custom Base URL", value="https://api.openai.com/v1", key="custom_base_url")
-        st.text_input("Custom API Key", type="password", value="", key="custom_api_key")
+            local_base_url = st.text_input("Base URL", value="http://localhost:8000/v1", key="custom_local_url")
+            local_model_name = st.text_input("Model Name", value="qwen2.5:7b", key="custom_local_model")
+            local_api_key = st.text_input("API Key (optional)", value="local", key="custom_local_key")
+
+    # Cloud LLM Provider Controls (if Online or Hybrid)
+    selected_provider = "groq"
+    if selected_exec_mode in ("online", "hybrid"):
+        st.markdown("**Cloud LLM Provider**" if selected_exec_mode == "hybrid" else "**LLM Provider**")
+        provider_label = st.selectbox("Cloud Provider", list(PROVIDER_INFO.keys()), key="sidebar_provider_label")
+        selected_provider = PROVIDER_INFO[provider_label]
+        if selected_provider == "openai":
+            from config import settings
+            from config.llm_registry import _is_valid_openai_key
+            if not _is_valid_openai_key(settings.OPENAI_API_KEY):
+                st.error("⚠️ OPENAI_API_KEY in .env is missing or invalid! (Must start with 'sk-').")
+            else:
+                st.info("GPT-4o — costs apply.", icon="ℹ️")
+        elif selected_provider == "gemini":
+            from config import settings
+            from config.llm_registry import _is_valid_gemini_key
+            if not _is_valid_gemini_key(settings.GEMINI_API_KEY):
+                st.error("⚠️ GEMINI_API_KEY in .env is missing or invalid! (Must start with 'AIzaSy').")
+            else:
+                st.info("Gemini 2.5 Flash — free tier.", icon="ℹ️")
+        elif selected_provider == "custom":
+            st.text_input("Custom Model Name", value="gpt-4o-mini", key="custom_model_name")
+            st.text_input("Custom Base URL", value="https://api.openai.com/v1", key="custom_base_url")
+            st.text_input("Custom API Key", type="password", value="", key="custom_api_key")
+    else:
+        selected_provider = "local"
 
     st.divider()
     if "research_level" not in st.session_state: st.session_state.research_level = "medium"
@@ -910,6 +979,11 @@ if nav_selection == "New Blog":
                 image_count=image_count, max_optimizer_passes=max_passes,
                 custom_images=custom_images_list,
                 speed_mode=selected_speed_mode,
+                execution_mode=selected_exec_mode,
+                local_engine=local_engine,
+                local_model_name=local_model_name,
+                local_base_url=local_base_url,
+                local_api_key=local_api_key,
                 target_length=target_length(mp),
                 llm_provider=selected_provider, stream_queue=sq,
                 job_id=job_id,
