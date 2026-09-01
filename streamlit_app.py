@@ -1,5 +1,5 @@
 """
-streamlit_app.py — Blog Enhancer UI
+streamlit_app.py — Blog Expert UI
 
 Tabs
 ────
@@ -688,7 +688,7 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Blog Enhancer", page_icon="✍️", layout="wide")
+st.set_page_config(page_title="Blog Expert", page_icon="✍️", layout="wide")
 st.markdown("""<style>
 .block-container{max-width:1120px;padding-top:2rem}
 article,.stMarkdown{font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:1.02rem;line-height:1.75}
@@ -700,7 +700,7 @@ h1,h2,h3{letter-spacing:0;line-height:1.2}
 .timerv{color:#7c83fd;font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums}
 </style>""", unsafe_allow_html=True)
 
-st.title("Blog Enhancer")
+st.title("Blog Expert")
 
 # ── Sidebar settings ──────────────────────────────────────────────────────────
 with st.sidebar:

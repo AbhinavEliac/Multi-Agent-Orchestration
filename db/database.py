@@ -1,5 +1,5 @@
 """
-database.py — SQLite persistence layer for Blog Enhancer.
+database.py — SQLite persistence layer for Blog Expert.
 
 Single file, zero external dependencies beyond stdlib.
 DB file: blog/data/blog_enhancer.db  (created automatically on first use).

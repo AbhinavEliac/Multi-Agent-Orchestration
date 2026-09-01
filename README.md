@@ -1,4 +1,4 @@
-# 🚀 Blog Enhancer — Production-Grade Multi-Agent AI Pipeline
+# 🚀 Blog Expert — Production-Grade Multi-Agent AI Pipeline
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=chainlink&logoColor=white)](https://langchain.com/)
@@ -9,7 +9,7 @@
 [![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com/)
 [![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75C2?style=for-the-badge&logo=google-gemini&logoColor=white)](https://deepmind.google/technologies/gemini/)
 
-**Blog Enhancer** is a robust, production-grade multi-agent AI pipeline designed to ingest, score, research, and optimize blog posts for maximum quality, SEO, and GEO (Generative Engine Optimization).
+**Blog Expert** is a robust, production-grade multi-agent AI pipeline designed to ingest, score, research, and optimize blog posts for maximum quality, SEO, and GEO (Generative Engine Optimization).
 
 Given a source blog URL, the pipeline scrapes the content, runs a baseline evaluation across six quality dimensions, performs deep background research via a supervisor-led agent team, and generates a heavily optimized, fact-checked, long-form post. It then enters an iterative evaluation-optimization loop until the article satisfies the strict quality criteria.
 
@@ -243,4 +243,4 @@ This runs the blog optimization graph using the default URL configured in [app.p
 
 *   **Author:** Abhinav Gupta 👨‍💻
 *   **Email:** [abhinavgupta15.ag@gmail.com](mailto:abhinavgupta15.ag@gmail.com)
-*   **Project Context:** Blog Enhancer Multi-Agent SEO Pipeline. Feel free to reach out for questions, feedback, or integration requests!
+*   **Project Context:** Blog Expert Multi-Agent SEO Pipeline. Feel free to reach out for questions, feedback, or integration requests!

@@ -1,6 +1,6 @@
-# Blog Enhancer — Complete Architecture & Technical Reference
+# Blog Expert — Complete Architecture & Technical Reference
 
-> Last updated: July 2026. Reflects all changes through the fault-tolerance and token-optimisation refactor.
+> Last updated: September 2026. Reflects all changes through the sub-60s parallel execution, custom images, local offline GPU LLM integration, and token optimization refactors.
 
 ---
 
@@ -31,7 +31,7 @@
 
 ## 1. System Overview
 
-Blog Enhancer is a production multi-agent AI pipeline. It takes a live blog URL, scrapes the source article, evaluates it as a baseline, runs a structured research and review pipeline, writes a complete enhanced long-form article, evaluates it across six quality dimensions, and iteratively optimises it until all scores reach 90/100 or iteration caps are hit.
+Blog Expert is a production multi-agent AI pipeline. It takes a live blog URL or topic, scrapes/prepares the source content, evaluates it as a baseline, runs a structured research and parallel review pipeline, writes a complete enhanced long-form article, evaluates it across six quality dimensions, and iteratively optimises it until all scores reach 90/100 or iteration caps are hit.
 
 **Key design principles:**
 
