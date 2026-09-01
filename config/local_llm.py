@@ -107,10 +107,19 @@ class LocalChatLLM:
         )
 
     def _invoke_chain(self, chain, inputs: dict):
-        """Invoke local LLM with basic retry and error logging."""
+        """Invoke local LLM with helpful connection error messaging."""
         try:
             return chain.invoke(inputs)
         except Exception as exc:
+            msg = str(exc)
+            err_lower = msg.lower()
+            if any(k in err_lower for k in ("connection error", "connect", "connection refused", "target machine actively refused", "failed to establish a new connection")):
+                clean_url = self.base_url.replace("/v1", "")
+                raise RuntimeError(
+                    f"Cannot connect to local LLM server at '{self.base_url}'. "
+                    f"Please make sure your local engine ({clean_url}) is running, "
+                    f"or switch 'Execution Mode' to 'Online Cloud' in the sidebar."
+                ) from exc
             logger.error("Local LLM invocation error on model '%s' (%s): %s", self.model, self.base_url, exc)
             raise
 

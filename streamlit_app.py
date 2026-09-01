@@ -732,6 +732,8 @@ with st.sidebar:
     local_api_key = "ollama"
 
     # Local LLM Controls (if Offline or Hybrid)
+    local_is_connected = True
+    local_status_msg = "Connected"
     if selected_exec_mode in ("offline", "hybrid"):
         from config.local_llm import discover_ollama_models, discover_lmstudio_models, OLLAMA_DEFAULT_BASE_URL, LMSTUDIO_DEFAULT_BASE_URL
         
@@ -740,22 +742,22 @@ with st.sidebar:
         
         if local_engine == "Ollama":
             local_base_url = st.text_input("Ollama URL", value=OLLAMA_DEFAULT_BASE_URL, key="ollama_base_url")
-            is_ok, models_found, status_msg = discover_ollama_models(local_base_url)
-            if is_ok:
-                st.caption(f"🟢 **Status**: {status_msg}")
+            local_is_connected, models_found, local_status_msg = discover_ollama_models(local_base_url)
+            if local_is_connected:
+                st.caption(f"🟢 **Status**: {local_status_msg}")
                 local_model_name = st.selectbox("Ollama Model", models_found, key="ollama_model_select")
             else:
-                st.caption(f"🔴 **Status**: {status_msg}")
+                st.caption(f"🔴 **Status**: {local_status_msg}")
                 local_model_name = st.text_input("Model Name", value="qwen2.5:7b", key="ollama_model_manual")
                 
         elif local_engine == "LM Studio":
             local_base_url = st.text_input("LM Studio URL", value=LMSTUDIO_DEFAULT_BASE_URL, key="lmstudio_base_url")
-            is_ok, models_found, status_msg = discover_lmstudio_models(local_base_url)
-            if is_ok:
-                st.caption(f"🟢 **Status**: {status_msg}")
+            local_is_connected, models_found, local_status_msg = discover_lmstudio_models(local_base_url)
+            if local_is_connected:
+                st.caption(f"🟢 **Status**: {local_status_msg}")
                 local_model_name = st.selectbox("LM Studio Model", models_found, key="lmstudio_model_select")
             else:
-                st.caption(f"🔴 **Status**: {status_msg}")
+                st.caption(f"🔴 **Status**: {local_status_msg}")
                 local_model_name = st.text_input("Model Name", value="local-model", key="lmstudio_model_manual")
         else:
             local_base_url = st.text_input("Base URL", value="http://localhost:8000/v1", key="custom_local_url")
@@ -977,6 +979,12 @@ if nav_selection == "New Blog":
             st.error("Enter a blog URL first.")
         elif mode == "generate" and not topic_idea.strip():
             st.error("Enter a topic or idea first.")
+        elif selected_exec_mode in ("offline", "hybrid") and not local_is_connected:
+            clean_host = local_base_url.replace('/v1', '')
+            st.error(
+                f"⚠️ Cannot connect to local engine at `{local_base_url}` ({local_status_msg}).\n\n"
+                f"Please start {local_engine} on your computer (`{clean_host}`), or switch **Execution Mode** in the sidebar to **🌐 Online Cloud (Groq / Gemini / OpenAI)**."
+            )
         else:
             sq  = queue.Queue()
             job_id = _db.create_job(target_url if mode == "enhance" else topic_idea.strip())
