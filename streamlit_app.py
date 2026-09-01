@@ -706,7 +706,15 @@ st.set_page_config(page_title="Blog Expert", page_icon="✍️", layout="wide")
 st.markdown("""<style>
 .block-container{max-width:1120px;padding-top:2rem}
 article,.stMarkdown{font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:1.02rem;line-height:1.75}
-h1,h2,h3{letter-spacing:0;line-height:1.2}
+h1{color:#f8fafc;font-weight:800;letter-spacing:-0.02em;line-height:1.25;margin-bottom:1.2rem}
+h2{color:#818cf8;font-weight:700;letter-spacing:-0.01em;border-bottom:1px solid #2e3350;padding-bottom:0.4rem;margin-top:2rem;margin-bottom:0.8rem}
+h3{color:#38bdf8;font-weight:600;margin-top:1.3rem;margin-bottom:0.5rem}
+.stMarkdown strong{color:#38bdf8;font-weight:600}
+blockquote{border-left:4px solid #6366f1!important;background:linear-gradient(135deg,rgba(30,41,59,0.7) 0%,rgba(15,23,42,0.85) 100%)!important;padding:14px 20px!important;border-radius:8px!important;margin:1.4rem 0!important;color:#f1f5f9!important;box-shadow:0 4px 14px rgba(0,0,0,0.2)!important}
+blockquote p{margin:0!important;font-size:1.01rem!important}
+.stMarkdown table{width:100%;border-collapse:separate;border-spacing:0;border-radius:8px;overflow:hidden;margin:1.5rem 0;border:1px solid #334155}
+.stMarkdown th{background:#1e293b;color:#38bdf8;font-weight:600;padding:10px 14px;border-bottom:2px solid #38bdf8}
+.stMarkdown td{padding:10px 14px;border-top:1px solid #1e293b;background:rgba(15,23,42,0.45);color:#e2e8f0}
 .agent-card{background:#1e2130;border:1px solid #2e3350;border-radius:10px;padding:12px 16px;margin-bottom:8px}
 .agent-card p{margin:0;font-size:.95rem}
 .alabel{color:#a0a8c0;font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px!important}

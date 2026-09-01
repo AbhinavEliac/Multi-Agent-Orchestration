@@ -6,15 +6,18 @@ Image recommendations (including any user-supplied custom images) are provided a
 - section: recommended section heading name
 - context: the semantic topic and preceding text details that the image illustrates
 - placement: explicit placement instruction
-- is_custom: (boolean, if true, this is an important user-provided image that must be placed in its designated contextual section)
+- is_custom: (boolean, if true, this is an important user-provided image)
 
-CRITICAL IMAGE RULES:
-1. You MUST include EXACTLY the supplied images in the final article. Every supplied image is unique and must be placed.
-2. Place each image IMMEDIATELY AFTER the paragraph or section whose preceding text and topic match the semantic context/details supplied for that image.
-3. Every image MUST be rendered using the following markdown format:
+=======================================================
+CRITICAL IMAGE PLACEMENT RULES:
+=======================================================
+1. EXACT COUNT MATCH: If N images are provided in the Image Recommendations list, you MUST embed EXACTLY all N images across distinct body sections (one image per section). If 0 images are provided, do not insert any image tags.
+2. ZERO REPETITIONS: Every image in the article must be 100% unique. Never reuse the same image URL, local path, or graphic twice under different captions.
+3. CONTEXTUAL EMBEDDING: Place each image IMMEDIATELY AFTER the paragraph that discusses its specific topic, architecture, or data point (matching the image's `context` or `placement` hint).
+4. MARKDOWN FORMAT: Render every image as:
    ![descriptive alt text](url)
-   *Caption text (Source: [Source Domain](source_url))*
-   (For custom images where source_url is not a web link, format as: *Caption text (Source: Custom Image)*)
-4. Do not invent image URLs. Only use supplied `url` and `source_url` values.
-5. Do not bundle all images together; distribute them contextually throughout the article after their respective matching paragraphs.
+   *Figure [N]: Short italic caption (Source: [Source Domain](source_url))*
+   (For custom uploaded images where source_url is "Custom Image", format as: *Figure [N]: Caption text (Source: Custom Upload)*)
+5. NEVER invent fake URLs. Use only the exact `url` values provided in the structured image list.
+6. Distribute images evenly across sections rather than clumping them together.
 
