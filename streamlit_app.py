@@ -405,12 +405,110 @@ def render_run(run_id: int) -> None:
                 del st.session_state["view_run_id"]
             st.rerun()
             
+def extract_failed_step_name(err_msg: str) -> str:
+    """Extracts a clear, human-readable step name from error message or traceback."""
+    if not err_msg:
+        return "Generation Pipeline"
+
+    # 1. Regex match for "Failed on step '...'"
+    step_match = re.search(r"Failed on step ['\"]?([^'\":\n]+)['\"]?", err_msg, re.IGNORECASE)
+    if step_match and step_match.group(1).strip() and step_match.group(1).strip().lower() != "unknown step":
+        step_raw = step_match.group(1).strip()
+        cleaned = re.sub(r"^[^\w\s]+", "", step_raw).strip()
+        return cleaned or step_raw
+
+    # 2. Heuristic inference from traceback and error details
+    err_lower = err_msg.lower()
+    if "evaluator.py" in err_lower or "evaluatoragent" in err_lower:
+        return "Full Evaluation & Scoring"
+    if "baseline_evaluator" in err_lower:
+        return "Baseline Quality Scoring"
+    if "aggregator" in err_lower:
+        return "Drafting Comprehensive Blog"
+    if "optimizer" in err_lower:
+        return "Polishing & Quality Optimization"
+    if "scraper.py" in err_lower or "scrape_blog" in err_lower or "scraping" in err_lower:
+        return "Scraping & Ingesting Content"
+    if "image_agent" in err_lower or "nemotron_image_selector" in err_lower or "firecrawl" in err_lower:
+        return "Image Search & Placement"
+    if "specialists" in err_lower or "language_agent" in err_lower or "seo_agent" in err_lower or "geo_agent" in err_lower or "facts_agent" in err_lower or "structure_agent" in err_lower:
+        return "Specialist Parallel Review"
+    if "planner" in err_lower:
+        return "Content Planning"
+    if "supervisor" in err_lower:
+        return "Supervisor Directives"
+    if "learner" in err_lower:
+        return "Extracting Learnings"
+    if "prompt_generator" in err_lower:
+        return "Generating Topic Prompt"
+    if "connection error" in err_lower or "connecttimeout" in err_lower or "localhost:11434" in err_lower or "ollama" in err_lower:
+        return "Local Engine Connection"
+    if "groq" in err_lower or "gemini" in err_lower or "openai" in err_lower or "404 not_found" in err_lower:
+        return "Cloud LLM Provider API"
+
+    return "Generation Pipeline"
+
+
+def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Queue):
+    run = _db.get_run(run_id)
+    if not run:
+        st.error("Run not found.")
+        return
+    art = _db.get_article(run_id)
+    
+    col_t, col_re, col_del = st.columns([6, 2, 2])
+    with col_t:
+        st.subheader(run.title or run.url)
+    with col_re:
+        if st.button("🔁 Re-run", key=f"rerun_top_{run.id}", type="primary", use_container_width=True):
+            job_id = _db.create_job(
+                url=run.url,
+                settings=settings,
+                parent_run_id=run.id,
+                title=f"Re-run: {run.title or run.url}"
+            )
+            jw = JobWriter(job_id=job_id, url=run.url, db=_db)
+            
+            raw_blog = art.original_blog if (art and art.original_blog) else ""
+            cleaned_blog = art.original_blog if (art and art.original_blog) else ""
+            topic_idea = getattr(run, "topic_idea", "") or ""
+            other_info = getattr(run, "other_info", "") or ""
+            mode = "generate" if (topic_idea or run.url.startswith("topic:")) else "enhance"
+            
+            state = BlogState(
+                url=run.url,
+                raw_blog=raw_blog,
+                cleaned_blog=cleaned_blog,
+                topic_idea=topic_idea,
+                other_info=other_info,
+                mode=mode,
+                job_id=job_id,
+                parent_run_id=run.id,
+                title=run.title,
+                **settings
+            )
+            
+            t = threading.Thread(
+                target=_run_generation, daemon=True,
+                args=(state, jw, _db, settings, sq),
+            )
+            t.start()
+            
+            st.session_state["current_job_id"] = job_id
+            st.session_state["next_nav_tab"] = "Active Jobs"
+            st.rerun()
+    with col_del:
+        if st.button("🗑️ Delete Run", key=f"del_top_{run.id}", type="secondary", use_container_width=True):
+            _db.delete_run(run_id)
+            if "view_run_id" in st.session_state:
+                del st.session_state["view_run_id"]
+            st.rerun()
+            
     if run.status == "failed":
         st.caption(f"{format_local_datetime(run.created_at)} · {run.llm_provider or 'unknown'}")
         
         err_msg = run.error_message or ""
-        step_match = re.search(r"Failed on step '([^']+)'", err_msg)
-        failed_step = step_match.group(1) if step_match else "Unknown Step"
+        failed_step = extract_failed_step_name(err_msg)
         
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
@@ -662,7 +760,9 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
         )
         jw.stop(run_id=run_id)
     except BaseException as fatal_exc:
-        err_msg = f"Fatal thread error: {fatal_exc}\n{traceback.format_exc()}"
+        agent_failed_on = current_agent[0] if ('current_agent' in locals() and current_agent) else "prepare"
+        agent_label = AGENT_STATUS.get(agent_failed_on, agent_failed_on)
+        err_msg = f"Failed on step '{agent_label}': Fatal thread error: {fatal_exc}\n{traceback.format_exc()}"
         try:
             from utilis.token_counter import get_tokens
             p_tok, c_tok, t_tok = get_tokens()
@@ -1209,9 +1309,10 @@ elif nav_selection == "History":
                     with fc1:
                         display_name = run.title or get_clean_title_fallback(run.url)
                         local_time_str = format_local_datetime(run.created_at)
+                        fstep = extract_failed_step_name(run.error_message or "")
                         st.markdown(f"❌ `{display_name}` — {local_time_str}")
                         if run.error_message:
-                            st.caption(run.error_message[:120] + "...")
+                            st.caption(f"**Step**: `{fstep}` · {run.error_message[:100]}...")
                     with fc2:
                         if st.button("View", key=f"fview_{run.id}"):
                             st.session_state["view_run_id"] = run.id
