@@ -161,12 +161,17 @@ def _show_tbl_or_md(tbuf: list) -> None:
     else:
         st.markdown("\n".join(tbuf))
 
-def _resolve_ui_image(url_str: str) -> str:
+def _resolve_ui_image(url_str: str) -> Optional[str]:
+    if not url_str:
+        return None
     from utilis.exporter import _resolve_image_path
     resolved = _resolve_image_path(url_str)
-    if resolved and resolved.exists():
+    if resolved and resolved.exists() and resolved.is_file():
         return str(resolved)
-    return url_str
+    clean_url = url_str.strip().strip("'").strip('"')
+    if clean_url.startswith(("http://", "https://")):
+        return clean_url
+    return None
 
 def render_blog(md: str) -> None:
     lines, buf, tbuf, in_t = md.splitlines(), [], [], False
@@ -177,8 +182,17 @@ def render_blog(md: str) -> None:
             if tbuf:
                 _show_tbl_or_md(tbuf)
                 tbuf.clear(); in_t = False
-            img_src = _resolve_ui_image(img.group("url"))
-            st.image(img_src, caption=img.group("alt") or None, use_container_width=True)
+            raw_url = img.group("url")
+            alt_caption = img.group("alt") or ""
+            img_src = _resolve_ui_image(raw_url)
+            if img_src:
+                try:
+                    st.image(img_src, caption=alt_caption or None, use_container_width=True)
+                except Exception:
+                    if alt_caption:
+                        st.caption(f"🖼️ *{alt_caption}*")
+            elif alt_caption:
+                st.caption(f"🖼️ *{alt_caption}*")
             continue
         if "|" in line and line.strip().startswith("|"):
             flush_md(buf); tbuf.append(line); in_t = True; continue
