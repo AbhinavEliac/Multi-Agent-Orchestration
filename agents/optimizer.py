@@ -75,6 +75,7 @@ class OptimizerAgent:
         }
 
         full_text = stream_invoke(prompt, llm, inputs, state.stream_chunk)
-        state.optimized_blog = full_text
+        from utilis.image_formatter import ensure_exact_images_in_markdown
+        state.optimized_blog = ensure_exact_images_in_markdown(full_text, state.image_output)
         state.stream_done()
         return state

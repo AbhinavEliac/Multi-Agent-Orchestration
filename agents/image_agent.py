@@ -268,21 +268,22 @@ class ImageAgent:
         source_markdown = state.cleaned_blog
         images: list[dict] = []
         seen_urls: set[str] = set()
+        seen_hashes: set[str] = set()
 
         # 1. Process custom images first if provided
         if custom_images:
             processed_custom = self._process_custom_images(custom_images, source_markdown, state)
             for img in processed_custom:
                 url = img.get("url")
-                if url and url not in seen_urls:
+                if url:
                     seen_urls.add(url)
                     images.append(img)
 
         # Total requested images
-        count = max(0, min(int(state.image_count or 0), 20))
+        target_total = max(0, min(int(state.image_count or 0), 20))
         
-        # If user explicitly provided custom images, ensure at least all custom images are included
-        target_total = max(count, len(images))
+        # Ensure at least all custom images are included
+        target_total = max(target_total, len(images))
         if target_total == 0:
             state.image_output = []
             return state
@@ -335,20 +336,24 @@ class ImageAgent:
                     fallback_sections.append(section)
                     continue
 
-                found = [download_image(img, section["heading"]) for img in found]
-
                 for img in found:
-                    url = img.get("url")
-                    if not url or url in seen_urls:
+                    dl = download_image(img, section["heading"])
+                    if not dl:
+                        continue
+                    url = dl.get("url")
+                    chash = dl.get("content_hash")
+                    if not url or url in seen_urls or (chash and chash in seen_hashes):
                         continue
                     seen_urls.add(url)
-                    img.setdefault("context",   section["context"])
-                    img.setdefault("placement", section["placement"])
-                    img["section"] = section["heading"]
-                    img["alt"] = img.get("alt") or f"{section['heading']} — {self._topic(state)}"
-                    img["caption"] = img.get("caption") or img["alt"]
-                    img["source_url"] = img.get("source_url") or img.get("remote_url") or url
-                    images.append(img)
+                    if chash:
+                        seen_hashes.add(chash)
+                    dl.setdefault("context",   section["context"])
+                    dl.setdefault("placement", section["placement"])
+                    dl["section"] = section["heading"]
+                    dl["alt"] = dl.get("alt") or f"{section['heading']} — {self._topic(state)}"
+                    dl["caption"] = dl.get("caption") or dl["alt"]
+                    dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
+                    images.append(dl)
                     if len(images) >= target_total:
                         break
 
@@ -385,16 +390,22 @@ class ImageAgent:
 
                     for img in found:
                         dl = download_image(img, section["heading"])
+                        if not dl:
+                            continue
                         url = dl.get("url")
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            dl.setdefault("context",   section["context"])
-                            dl.setdefault("placement", section["placement"])
-                            dl["section"] = section["heading"]
-                            dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
-                            images.append(dl)
-                            if len(images) >= target_total:
-                                break
+                        chash = dl.get("content_hash")
+                        if not url or url in seen_urls or (chash and chash in seen_hashes):
+                            continue
+                        seen_urls.add(url)
+                        if chash:
+                            seen_hashes.add(chash)
+                        dl.setdefault("context",   section["context"])
+                        dl.setdefault("placement", section["placement"])
+                        dl["section"] = section["heading"]
+                        dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
+                        images.append(dl)
+                        if len(images) >= target_total:
+                            break
 
             # 3. Third pass: broad topic search if still below target
             if len(images) < target_total:
@@ -404,6 +415,7 @@ class ImageAgent:
                     f"{topic} technology architecture framework diagram",
                     f"{topic} market analysis statistics trends",
                     f"{topic} enterprise workflow implementation roadmap",
+                    f"{topic} executive strategy guide",
                 ]
                 for bq in broad_queries:
                     if len(images) >= target_total:
@@ -414,16 +426,22 @@ class ImageAgent:
                     )
                     for c in cands:
                         dl = download_image(c, "Overview")
+                        if not dl:
+                            continue
                         url = dl.get("url")
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            dl.setdefault("context", f"Comprehensive analysis for {topic}")
-                            dl.setdefault("placement", f"Place in the section illustrating {topic}.")
-                            dl["section"] = "Key Insights"
-                            dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
-                            images.append(dl)
-                            if len(images) >= target_total:
-                                break
+                        chash = dl.get("content_hash")
+                        if not url or url in seen_urls or (chash and chash in seen_hashes):
+                            continue
+                        seen_urls.add(url)
+                        if chash:
+                            seen_hashes.add(chash)
+                        dl.setdefault("context", f"Comprehensive analysis for {topic}")
+                        dl.setdefault("placement", f"Place in the section illustrating {topic}.")
+                        dl["section"] = "Key Insights"
+                        dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
+                        images.append(dl)
+                        if len(images) >= target_total:
+                            break
 
         state.image_output = images[:target_total]
         return state

@@ -149,7 +149,6 @@ If nothing is suitable, return: {{"selected_images": []}}
 
 def download_image(image, section):
     url = image.get("url")
-
     if not url:
         return image
 
@@ -160,10 +159,13 @@ def download_image(image, section):
     ).strip("-")[:50] or "blog-image"
 
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         response.raise_for_status()
+        # Reject tiny icons, tracking pixels, and empty responses (< 3500 bytes)
+        if len(response.content) < 3500:
+            return None
     except Exception:
-        return image
+        return None
 
     content_type = response.headers.get("content-type", "").split(";")[0]
     extension = {
@@ -174,13 +176,15 @@ def download_image(image, section):
         "image/gif": ".gif",
     }.get(content_type, ".jpg")
 
-    url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-    file_name = f"{safe_section}-{url_hash}{extension}"
+    content_hash = hashlib.md5(response.content).hexdigest()
+    file_name = f"{safe_section}-{content_hash[:12]}{extension}"
     file_path = IMAGE_DIR / file_name
     file_path.write_bytes(response.content)
 
     image["remote_url"] = url
     image["local_path"] = file_path.as_posix()
     image["url"] = file_path.as_posix()
+    image["content_hash"] = content_hash
+    image["byte_size"] = len(response.content)
 
     return image
