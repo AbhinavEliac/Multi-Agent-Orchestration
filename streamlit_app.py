@@ -284,126 +284,7 @@ def score_table(bl: list, en: list, bo: int, no: int) -> None:
             f"<th style='text-align:left'>Dimension</th><th>Original</th><th>Enhanced</th><th>Delta</th>"
             f"</tr></thead><tbody>{rows}</tbody></table>", unsafe_allow_html=True)
 
-def render_run(run_id: int) -> None:
-    run = _db.get_run(run_id); art = _db.get_article(run_id)
-    if not run or not art: st.warning("Run not found."); return
-    has_resume = (run.status == "failed" and getattr(run, "serialized_state", ""))
-    if has_resume:
-        col_hdr, col_cont, col_redo, col_del = st.columns([2, 1, 1, 1])
-    else:
-        col_hdr, col_redo, col_del = st.columns([3, 1, 1])
 
-    with col_hdr:
-        if run.status == "failed":
-            st.error(f"Failed Run #{run.id} — {run.url}")
-        else:
-            st.success(f"Run #{run.id} — {run.url}")
-
-    if has_resume:
-        with col_cont:
-            if st.button("▶️ Continue Run", key=f"cont_top_{run.id}", type="primary", use_container_width=True):
-                import json
-                import queue
-                
-                # Deserialise state
-                state_data = json.loads(run.serialized_state)
-                curr_provider = PROVIDER_INFO.get(st.session_state.get("sidebar_provider_label"), "groq")
-                state_data["llm_provider"] = curr_provider
-                
-                # Override custom LLM settings with current UI settings if applicable
-                state_data["custom_model_name"] = st.session_state.get("custom_model_name", "")
-                state_data["custom_api_key"] = st.session_state.get("custom_api_key", "")
-                state_data["custom_base_url"] = st.session_state.get("custom_base_url", "")
-                
-                # Jump straight to failed node
-                resume_node_name = state_data.get("active_agent") or "prepare"
-                state_data["resume_node"] = resume_node_name
-                
-                # Instantiate state
-                state = BlogState(**state_data)
-                
-                # Setup background job
-                sq = queue.Queue()
-                target_url = state.url
-                job_id = _db.create_job(target_url if state.mode == "enhance" else state.topic_idea)
-                jw = JobWriter(_db, job_id)
-                jw.start()
-                
-                state.job_id = job_id
-                state.stream_queue = sq
-                
-                settings = dict(
-                    provider=curr_provider,
-                    research_level=state.research_level,
-                    language_quality=state.language_quality,
-                    max_pages=state.max_pages,
-                    image_count=state.image_count
-                )
-                
-                t = threading.Thread(
-                    target=_run_generation, daemon=True,
-                    args=(state, jw, _db, settings, sq),
-                )
-                t.start()
-                
-                st.session_state["current_job_id"] = job_id
-                st.session_state["next_nav_tab"] = "Active Jobs"
-                st.rerun()
-
-    with col_redo:
-        if st.button("🔄 Redo Run", key=f"redo_top_{run.id}", type="primary", use_container_width=True):
-            # Launch a redo run!
-            import queue
-            is_generate = run.url.startswith("topic:")
-            mode_val = "generate" if is_generate else "enhance"
-            topic_idea_val = run.topic_idea or (run.url[6:] if is_generate else "")
-            
-            target_url = run.url
-            sq = queue.Queue()
-            job_id = _db.create_job(target_url if mode_val == "enhance" else topic_idea_val)
-            jw = JobWriter(_db, job_id)
-            jw.start()
-            
-            state = BlogState(
-                url=target_url,
-                max_pages=run.max_pages,
-                language_quality=run.language_quality,
-                research_level=run.research_level,
-                research_results=5,
-                image_count=run.image_count,
-                max_optimizer_passes=run.optimizer_iterations or 3,
-                target_length=f"approximately {run.max_pages} web pages, or {run.max_pages*500} words",
-                llm_provider=run.llm_provider,
-                stream_queue=sq,
-                job_id=job_id,
-                mode=mode_val,
-                topic_idea=topic_idea_val,
-                other_info=run.other_info,
-                parent_run_id=run.id,
-            )
-            settings = dict(
-                provider=run.llm_provider,
-                research_level=run.research_level,
-                language_quality=run.language_quality,
-                max_pages=run.max_pages,
-                image_count=run.image_count
-            )
-            
-            t = threading.Thread(
-                target=_run_generation, daemon=True,
-                args=(state, jw, _db, settings, sq),
-            )
-            t.start()
-            
-            st.session_state["current_job_id"] = job_id
-            st.session_state["next_nav_tab"] = "Active Jobs"
-            st.rerun()
-    with col_del:
-        if st.button("🗑️ Delete Run", key=f"del_top_{run.id}", type="secondary", use_container_width=True):
-            _db.delete_run(run_id)
-            if "view_run_id" in st.session_state:
-                del st.session_state["view_run_id"]
-            st.rerun()
             
 def extract_failed_step_name(err_msg: str) -> str:
     """Extracts a clear, human-readable step name from error message or traceback."""
@@ -1352,58 +1233,78 @@ elif nav_selection == "Active Jobs":
 elif nav_selection == "History":
     view_id = st.session_state.get("view_run_id")
     if view_id:
-        if st.button("Back to run list"):
+        if st.button("⬅️ Back to All History Runs", type="secondary"):
             del st.session_state["view_run_id"]
             st.rerun()
-        render_run(view_id)
+        render_run_view(view_id, _db, settings, sq)
     else:
-        completed = [r for r in _db.list_runs(50) if r.status == "completed"]
-        failed    = [r for r in _db.list_runs(50) if r.status == "failed"]
+        completed = [r for r in _db.list_runs(100) if r.status == "completed"]
+        failed    = [r for r in _db.list_runs(100) if r.status == "failed"]
 
         if not completed and not failed:
-            st.info("No completed runs yet.")
+            st.info("No generation runs recorded in history yet.")
         else:
-            for run in completed:
-                display_name = run.title or get_clean_title_fallback(run.url)
-                local_time_str = format_local_datetime(run.created_at)
-                delta  = run.enhanced_overall - run.baseline_overall
-                ds     = f"▲+{delta}" if delta > 0 else (f"▼{delta}" if delta < 0 else "—")
-                c1, c2, c3 = st.columns([4, 1, 1])
-                with c1:
-                    st.markdown(f"**{display_name}**  ·  {local_time_str}  ·  Overall {ds}  ·  {fmt_dur(run.duration_seconds)}")
-                with c2:
-                    if st.button("View", key=f"view_{run.id}"):
-                        st.session_state["view_run_id"] = run.id
-                        st.rerun()
-                with c3:
-                    if st.button("Delete", key=f"hdel_{run.id}", type="secondary"):
-                        _db.delete_run(run.id)
-                        if st.session_state.get("view_run_id") == run.id:
-                            del st.session_state["view_run_id"]
-                        st.rerun()
+            if completed:
+                st.subheader(f"✅ Completed Generations ({len(completed)})")
+                for run in completed:
+                    display_name = run.title or get_clean_title_fallback(run.url)
+                    local_time_str = format_local_datetime(run.created_at)
+                    dur_str = fmt_dur(run.duration_seconds)
+                    passes_str = f"{run.optimizer_iterations or 0} pass(es)"
+                    is_gen = run.url.startswith("topic:") or bool(getattr(run, "topic_idea", None))
+
+                    if is_gen:
+                        score_badge = f"Score: **{run.enhanced_overall}/100**"
+                    else:
+                        delta = run.enhanced_overall - run.baseline_overall
+                        ds = f"▲+{delta}" if delta > 0 else (f"▼{delta}" if delta < 0 else "—")
+                        score_badge = f"Overall: **{run.enhanced_overall}/100** ({ds})"
+
+                    with st.container():
+                        c1, c2, c3 = st.columns([5, 1.2, 1])
+                        with c1:
+                            st.markdown(f"**{display_name}**")
+                            st.caption(f"📅 {local_time_str} · ⏱️ Time Taken: **{dur_str}** · ⚙️ Optimization: **{passes_str}** · 📊 {score_badge} · 🤖 `{run.llm_provider}`")
+                        with c2:
+                            if st.button("👁️ View Blog", key=f"view_{run.id}", use_container_width=True):
+                                st.session_state["view_run_id"] = run.id
+                                st.rerun()
+                        with c3:
+                            if st.button("🗑️ Delete", key=f"hdel_{run.id}", type="secondary", use_container_width=True):
+                                _db.delete_run(run.id)
+                                if st.session_state.get("view_run_id") == run.id:
+                                    del st.session_state["view_run_id"]
+                                st.rerun()
+                    st.divider()
 
             if failed:
-                st.divider()
-                st.subheader("Failed runs")
+                st.subheader(f"❌ Failed Generations ({len(failed)})")
                 for run in failed:
-                    fc1, fc2, fc3 = st.columns([4, 1, 1])
-                    with fc1:
-                        display_name = run.title or get_clean_title_fallback(run.url)
-                        local_time_str = format_local_datetime(run.created_at)
-                        fstep = extract_failed_step_name(run.error_message or "")
-                        st.markdown(f"❌ `{display_name}` — {local_time_str}")
-                        if run.error_message:
-                            st.caption(f"**Step**: `{fstep}` · {run.error_message[:100]}...")
-                    with fc2:
-                        if st.button("View", key=f"fview_{run.id}"):
-                            st.session_state["view_run_id"] = run.id
-                            st.rerun()
-                    with fc3:
-                        if st.button("Delete", key=f"fdel_{run.id}", type="secondary"):
-                            _db.delete_run(run.id)
-                            if st.session_state.get("view_run_id") == run.id:
-                                del st.session_state["view_run_id"]
-                            st.rerun()
+                    display_name = run.title or get_clean_title_fallback(run.url)
+                    local_time_str = format_local_datetime(run.created_at)
+                    dur_str = fmt_dur(run.duration_seconds)
+                    passes_str = f"{run.optimizer_iterations or 0} pass(es)"
+                    fstep = extract_failed_step_name(run.error_message or "")
+                    category, summary, _ = explain_failure_reason(run.error_message or "")
+
+                    with st.container():
+                        fc1, fc2, fc3 = st.columns([5, 1.2, 1])
+                        with fc1:
+                            st.markdown(f"❌ **{display_name}**")
+                            st.caption(f"📅 {local_time_str} · 🚨 Failed On: **{fstep}** · ⏱️ Time Elapsed: **{dur_str}** · ⚙️ Passes: **{passes_str}** · 🤖 `{run.llm_provider or 'unknown'}`")
+                            if summary:
+                                st.markdown(f"<span style='color:#f87171; font-size:0.9rem;'><b>Reason:</b> {summary}</span>", unsafe_allow_html=True)
+                        with fc2:
+                            if st.button("🔍 View Details", key=f"fview_{run.id}", use_container_width=True):
+                                st.session_state["view_run_id"] = run.id
+                                st.rerun()
+                        with fc3:
+                            if st.button("🗑️ Delete", key=f"fdel_{run.id}", type="secondary", use_container_width=True):
+                                _db.delete_run(run.id)
+                                if st.session_state.get("view_run_id") == run.id:
+                                    del st.session_state["view_run_id"]
+                                st.rerun()
+                    st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB: Monitoring (token usage and plan status)
