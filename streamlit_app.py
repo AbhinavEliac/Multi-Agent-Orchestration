@@ -419,7 +419,7 @@ def render_failure_details(run):
         st.code(err_msg, language="text")
 
 
-def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Queue):
+def render_run_view(run_id: int, _db: BlogDatabase):
     run = _db.get_run(run_id)
     if not run:
         st.error("Run not found.")
@@ -431,13 +431,22 @@ def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Qu
         st.subheader(run.title or run.url)
     with col_re:
         if st.button("🔁 Re-run", key=f"rerun_top_{run.id}", type="primary", use_container_width=True):
+            rerun_settings = dict(
+                provider=run.llm_provider,
+                research_level=run.research_level,
+                language_quality=run.language_quality,
+                max_pages=run.max_pages,
+                image_count=run.image_count,
+            )
+            sq = queue.Queue()
             job_id = _db.create_job(
                 url=run.url,
-                settings=settings,
+                settings=rerun_settings,
                 parent_run_id=run.id,
                 title=f"Re-run: {run.title or run.url}"
             )
-            jw = JobWriter(job_id=job_id, url=run.url, db=_db)
+            jw = JobWriter(_db, job_id)
+            jw.start()
             
             raw_blog = art.original_blog if (art and art.original_blog) else ""
             cleaned_blog = art.original_blog if (art and art.original_blog) else ""
@@ -455,12 +464,13 @@ def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Qu
                 job_id=job_id,
                 parent_run_id=run.id,
                 title=run.title,
-                **settings
+                stream_queue=sq,
+                **rerun_settings
             )
             
             t = threading.Thread(
                 target=_run_generation, daemon=True,
-                args=(state, jw, _db, settings, sq),
+                args=(state, jw, _db, rerun_settings, sq),
             )
             t.start()
             
@@ -1236,7 +1246,7 @@ elif nav_selection == "History":
         if st.button("⬅️ Back to All History Runs", type="secondary"):
             del st.session_state["view_run_id"]
             st.rerun()
-        render_run_view(view_id, _db, settings, sq)
+        render_run_view(view_id, _db)
     else:
         completed = [r for r in _db.list_runs(100) if r.status == "completed"]
         failed    = [r for r in _db.list_runs(100) if r.status == "failed"]
