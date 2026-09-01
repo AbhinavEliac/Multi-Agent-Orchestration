@@ -48,8 +48,39 @@ def clean_blog_markdown(markdown: str) -> str:
 
 
 def _resolve_image_path(img_ref: str) -> Optional[Path]:
-    """Finds an image file on the local filesystem from markdown image target."""
+    """
+    Resolves local file paths or downloads remote web image URLs (with caching)
+    so images can be embedded directly into PDF and Word exports.
+    """
     clean_ref = img_ref.strip().strip("'").strip('"')
+    if not clean_ref:
+        return None
+
+    # 1. Handle HTTP / HTTPS remote image URLs
+    if clean_ref.startswith(("http://", "https://")):
+        try:
+            import hashlib
+            import requests
+            cache_dir = Path.cwd() / "data" / "img_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            url_hash = hashlib.md5(clean_ref.encode("utf-8")).hexdigest()
+            ext = ".jpg"
+            if ".png" in clean_ref.lower():
+                ext = ".png"
+            elif ".webp" in clean_ref.lower():
+                ext = ".webp"
+            cached_file = cache_dir / f"{url_hash}{ext}"
+            if cached_file.exists() and cached_file.stat().st_size > 500:
+                return cached_file
+
+            resp = requests.get(clean_ref, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code == 200 and len(resp.content) > 500:
+                cached_file.write_bytes(resp.content)
+                return cached_file
+        except Exception:
+            pass
+
+    # 2. Handle Local File Paths
     p = Path(clean_ref)
     if p.exists() and p.is_file():
         return p
@@ -60,6 +91,7 @@ def _resolve_image_path(img_ref: str) -> Optional[Path]:
         Path.cwd() / "generated_images" / clean_ref,
         Path.cwd() / "generated_images" / p.name,
         Path.cwd() / "data" / "custom_images" / p.name,
+        Path.cwd() / "data" / "img_cache" / p.name,
     ]
     for cand in candidates:
         if cand.exists() and cand.is_file():

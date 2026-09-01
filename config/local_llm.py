@@ -104,6 +104,7 @@ class LocalChatLLM:
             temperature=self.temperature,
             max_tokens=self._max_tokens,
             timeout=self.timeout,
+            extra_body={"options": {"num_gpu": 99, "num_ctx": 4096}},
         )
 
     def _invoke_chain(self, chain, inputs: dict):

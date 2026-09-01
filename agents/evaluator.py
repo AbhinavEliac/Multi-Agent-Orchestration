@@ -22,10 +22,9 @@ prompt = ChatPromptTemplate.from_messages([
     )),
 ])
 
-# 9 000 chars covers a full 2500-word article (~15 000 chars raw but the
-# evaluator needs enough to score all sections, not every word verbatim).
-# Reduced from 14 000 to keep total Groq request under 6 000 tokens.
-_EVAL_MAX_CHARS = 9_000
+# 35 000 chars easily covers a full 3500-word article (~22 000 chars)
+# ensuring the evaluator sees the complete text including FAQs, conclusion, and tables.
+_EVAL_MAX_CHARS = 35_000
 
 
 from utilis.tracing import traceable

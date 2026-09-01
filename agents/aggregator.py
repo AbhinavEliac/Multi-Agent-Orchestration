@@ -27,13 +27,13 @@ prompt = ChatPromptTemplate.from_messages([
 # Input budget per field (chars). Total input ~10 000 chars = ~2 857 tokens.
 # With aggregator.txt (~5 315 chars = ~1 519 tokens) system prompt,
 # total input = ~4 376 tokens. Output capped at 3 500 = 7 876 total — under 8K.
-_BLOG_CHARS      = 1_800   # original blog snippet
-_BRIEF_LANG      = 500
-_BRIEF_FACTS     = 500
-_BRIEF_STRUCT    = 900     # structure needs more room (skeleton + FAQ headings)
-_BRIEF_SEO       = 900     # SEO needs keyword list + H2s
-_BRIEF_GEO       = 400
-_OUTPUT_TOKENS   = 3_500   # reduced from 4096 to keep total < 8K on Groq free tier
+_BLOG_CHARS      = 3_000   # original blog snippet
+_BRIEF_LANG      = 800
+_BRIEF_FACTS     = 1_000
+_BRIEF_STRUCT    = 1_200   # structure needs room (skeleton + FAQ headings)
+_BRIEF_SEO       = 1_200   # SEO needs keyword list + H2s
+_BRIEF_GEO       = 600
+_OUTPUT_TOKENS   = 4_500   # provides full headroom for 2800-3200 words + FAQs + table
 
 
 from utilis.tracing import traceable

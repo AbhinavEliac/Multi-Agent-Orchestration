@@ -748,7 +748,8 @@ with st.sidebar:
                 local_model_name = st.selectbox("Ollama Model", models_found, key="ollama_model_select")
             else:
                 st.caption(f"🔴 **Status**: {local_status_msg}")
-                local_model_name = st.text_input("Model Name", value="qwen2.5:7b", key="ollama_model_manual")
+                local_model_name = st.text_input("Model Name", value="qwen2.5:3b", key="ollama_model_manual")
+            st.caption("💡 **GPU Tip (4GB RTX 3050)**: Pull `qwen2.5:3b` (`ollama pull qwen2.5:3b`) or `llama3.2:3b` to fit 100% inside GPU VRAM at 80+ tok/s.")
                 
         elif local_engine == "LM Studio":
             local_base_url = st.text_input("LM Studio URL", value=LMSTUDIO_DEFAULT_BASE_URL, key="lmstudio_base_url")
@@ -761,7 +762,7 @@ with st.sidebar:
                 local_model_name = st.text_input("Model Name", value="local-model", key="lmstudio_model_manual")
         else:
             local_base_url = st.text_input("Base URL", value="http://localhost:8000/v1", key="custom_local_url")
-            local_model_name = st.text_input("Model Name", value="qwen2.5:7b", key="custom_local_model")
+            local_model_name = st.text_input("Model Name", value="qwen2.5:3b", key="custom_local_model")
             local_api_key = st.text_input("API Key (optional)", value="local", key="custom_local_key")
 
     # Cloud LLM Provider Controls (if Online or Hybrid)

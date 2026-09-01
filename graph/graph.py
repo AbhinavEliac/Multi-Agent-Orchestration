@@ -190,8 +190,6 @@ def _wrap(agent_name: str, agent_class):
 def prepare_router(state: BlogState):
     if getattr(state, "resume_node", None) and state.resume_node != "prepare":
         return state.resume_node
-    if getattr(state, "mode", "enhance") == "generate":
-        return "planner"
     return "baseline_evaluator"
 
 
