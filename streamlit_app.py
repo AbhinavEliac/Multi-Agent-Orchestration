@@ -449,6 +449,95 @@ def extract_failed_step_name(err_msg: str) -> str:
     return "Generation Pipeline"
 
 
+def explain_failure_reason(err_msg: str) -> tuple[str, str, str]:
+    """
+    Analyzes the error message and returns (category, summary_explanation, recommendation).
+    """
+    if not err_msg:
+        return "Unknown Error", "No detailed error message was recorded for this run.", "Click Re-run to restart."
+
+    err_lower = err_msg.lower()
+
+    if "connecttimeout" in err_lower or "readtimeout" in err_lower or "timed out" in err_lower or "timeout" in err_lower:
+        return (
+            "Local Engine Timeout",
+            "The local LLM engine took longer than the 120s timeout limit to respond. This occurs when large models (such as 7B models) exceed GPU VRAM and run slowly on CPU RAM.",
+            "Run 'ollama pull qwen2.5:3b' in PowerShell and select 'qwen2.5:3b' in the sidebar (runs 100% in GPU VRAM at 80+ tok/s), or switch to 'Online Cloud' mode."
+        )
+
+    if "connectionrefused" in err_lower or "cannot connect to local engine" in err_lower or "winerror 10061" in err_lower or "not reachable" in err_lower:
+        return (
+            "Local Server Unreachable",
+            "Could not connect to the local LLM server at http://localhost:11434. The Ollama or LM Studio service is currently stopped or unreachable.",
+            "Start Ollama on your computer (open Ollama app or run 'ollama serve' in PowerShell), or change Execution Mode in the sidebar to 'Online Cloud'."
+        )
+
+    if "404 not_found" in err_lower or "model_not_found" in err_lower or "does not exist" in err_lower or "no longer available" in err_lower:
+        return (
+            "Model Deprecated / Not Found",
+            "The requested model is either not pulled locally or has been decommissioned by the cloud provider API.",
+            "For local Ollama: run 'ollama pull <model_name>'. For Cloud: select Gemini or Groq in the sidebar (configured to current models like gemini-3.5-flash-lite)."
+        )
+
+    if "cancelled by user" in err_lower:
+        return (
+            "User Cancelled",
+            "The generation job was manually cancelled by the user from the Active Jobs tab.",
+            "Click 'Re-run' whenever you wish to resume or restart generation."
+        )
+
+    if "scraper" in err_lower or "scrape_blog" in err_lower or "connection error" in err_lower or "403" in err_lower:
+        return (
+            "Web Scraping Blocked",
+            "Unable to download or parse the source blog webpage. The website may be blocking automated web requests or the URL is invalid.",
+            "Verify the URL in your browser, or switch to 'Generate New Blog' mode to generate a comprehensive article directly from a topic prompt."
+        )
+
+    if "context_length_exceeded" in err_lower or "maximum context length" in err_lower or "rate_limit_exceeded" in err_lower:
+        return (
+            "Context / Rate Limit",
+            "The request exceeded the LLM provider's token context window or per-minute rate limit.",
+            "Wait 60 seconds before retrying, or switch the Cloud Provider in sidebar to Gemini."
+        )
+
+    return (
+        "Pipeline Execution Error",
+        "An unexpected exception was encountered during this pipeline stage.",
+        "Review the technical error message below, or click 'Re-run' to retry with fresh parameters."
+    )
+
+
+def render_failure_details(run):
+    err_msg = run.error_message or ""
+    failed_step = extract_failed_step_name(err_msg)
+    category, summary, recommendation = explain_failure_reason(err_msg)
+
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(15, 23, 42, 0.7) 100%); '
+        f'border:1px solid rgba(239, 68, 68, 0.4); border-left:5px solid #ef4444; border-radius:8px; padding:16px 20px; margin-bottom:1.2rem;">'
+        f'<h4 style="color:#f87171; margin:0 0 6px 0; font-size:1.15rem;">🚨 Generation Failed on Step: <b>{failed_step}</b></h4>'
+        f'<p style="color:#fecaca; margin:0 0 8px 0; font-size:0.98rem;"><b>Why it failed:</b> {summary}</p>'
+        f'<p style="color:#93c5fd; margin:0; font-size:0.95rem;">💡 <b>Recommended Fix:</b> {recommendation}</p>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("Failed On Step", failed_step)
+    with col2:
+        st.metric("Failure Category", category)
+    with col3:
+        st.metric("Optimization Passes", run.optimizer_iterations)
+    with col4:
+        st.metric("Evaluation Iterations", run.evaluation_iterations)
+    with col5:
+        st.metric("Duration", fmt_dur(run.duration_seconds))
+
+    with st.expander("🛠️ Full Technical Error Message & Stack Trace", expanded=False):
+        st.code(err_msg, language="text")
+
+
 def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Queue):
     run = _db.get_run(run_id)
     if not run:
@@ -506,20 +595,7 @@ def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Qu
             
     if run.status == "failed":
         st.caption(f"{format_local_datetime(run.created_at)} · {run.llm_provider or 'unknown'}")
-        
-        err_msg = run.error_message or ""
-        failed_step = extract_failed_step_name(err_msg)
-        
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            st.metric("Failed On Step", failed_step)
-        with col_s2:
-            st.metric("Evaluation Iterations", run.evaluation_iterations)
-        with col_s3:
-            st.metric("Optimization Iterations", run.optimizer_iterations)
-            
-        st.subheader("Error Details")
-        st.code(err_msg, language="text")
+        render_failure_details(run)
     else:
         st.caption(f"{format_local_datetime(run.created_at)} · {fmt_dur(run.duration_seconds)} · {run.llm_provider} · {run.optimizer_iterations} pass(es)")
         score_table(
@@ -1168,28 +1244,32 @@ if nav_selection == "New Blog":
             
         run = _db.get_run(last_run_id)
         art = _db.get_article(last_run_id)
-        if run and art:
-            st.caption(f"Generated at {format_local_datetime(run.created_at)} · {run.llm_provider} · {run.optimizer_iterations} pass(es)")
-            score_table(
-                [run.baseline_language, run.baseline_facts, run.baseline_structure, run.baseline_seo, run.baseline_geo, run.baseline_freshness],
-                [run.enhanced_language, run.enhanced_facts, run.enhanced_structure, run.enhanced_seo, run.enhanced_geo, run.enhanced_freshness],
-                run.baseline_overall, run.enhanced_overall,
-            )
-            
-            t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
-            with t1:
-                if run.url.startswith("topic:"):
-                    st.info("No original blog (Generate Mode).")
-                elif art.original_blog:
-                    render_blog(art.original_blog)
-                else:
-                    st.info("Not saved.")
-            with t2:
-                if art.enhanced_blog:
-                    render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"last_{run.id}")
-                    render_blog(art.enhanced_blog)
-                else:
-                    st.warning("Not generated.")
+        if run:
+            if run.status == "failed":
+                st.caption(f"Failed at {format_local_datetime(run.created_at)} · {run.llm_provider or 'unknown'}")
+                render_failure_details(run)
+            elif art:
+                st.caption(f"Generated at {format_local_datetime(run.created_at)} · {run.llm_provider} · {run.optimizer_iterations} pass(es)")
+                score_table(
+                    [run.baseline_language, run.baseline_facts, run.baseline_structure, run.baseline_seo, run.baseline_geo, run.baseline_freshness],
+                    [run.enhanced_language, run.enhanced_facts, run.enhanced_structure, run.enhanced_seo, run.enhanced_geo, run.enhanced_freshness],
+                    run.baseline_overall, run.enhanced_overall,
+                )
+                
+                t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
+                with t1:
+                    if run.url.startswith("topic:"):
+                        st.info("No original blog (Generate Mode).")
+                    elif art.original_blog:
+                        render_blog(art.original_blog)
+                    else:
+                        st.info("Not saved.")
+                with t2:
+                    if art.enhanced_blog:
+                        render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"last_{run.id}")
+                        render_blog(art.enhanced_blog)
+                    else:
+                        st.warning("Not generated.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB: Active Jobs
