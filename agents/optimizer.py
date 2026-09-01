@@ -34,13 +34,9 @@ from utilis.tracing import traceable
 
 
 class OptimizerAgent:
-    # Cap the draft fed into the optimizer to prevent 413 errors.
-    # A 3000-word article is ~18 000 chars; the optimizer needs the article
-    # structure and content, not every word. 8 000 chars covers ~1 200 words —
-    # enough context for the model to rewrite with all fixes applied.
-    _DRAFT_MAX_CHARS    = 7_000   # ~2 000 tokens input for the draft
-    _FEEDBACK_MAX_CHARS = 300     # keep feedback tight
-    _OUTPUT_TOKENS      = 3_500   # cap output to keep total < 8K on Groq free tier
+    _DRAFT_MAX_CHARS    = 25_000  # full draft context for complete rewrite
+    _FEEDBACK_MAX_CHARS = 1_200   # rich feedback from evaluator
+    _OUTPUT_TOKENS      = 4_500   # full output headroom for complete 2800-word article
 
     @traceable
     def invoke(self, state):

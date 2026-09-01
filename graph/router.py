@@ -44,10 +44,10 @@ MAX_TARGETED_ITERATIONS = 3
 def evaluation_router(state: BlogState) -> str:
     """
     Called after the FIRST evaluator run (post-aggregator).
-    Sends failing dimensions back to their specialist for a revised brief.
-    Once all dimensions ≥70, proceed to optimizer.
+    Routes to optimizer to polish failing dimensions or to specialists if re-brief needed.
     """
-    if getattr(state, "speed_mode", "turbo") == "turbo":
+    mode = getattr(state, "speed_mode", "turbo")
+    if mode in ("turbo", "balanced"):
         return "optimizer"
 
     if state.iteration >= MAX_SPECIALIST_ITERATIONS:
@@ -55,19 +55,14 @@ def evaluation_router(state: BlogState) -> str:
 
     if state.freshness_score < 70:
         return "researcher"
-
     if state.language_score < 70:
         return "language"
-
     if state.facts_score < 70:
         return "facts"
-
     if state.structure_score < 70:
         return "structure"
-
     if state.seo_score < 70:
         return "seo"
-
     if state.geo_score < 70:
         return "geo"
 
@@ -76,47 +71,40 @@ def evaluation_router(state: BlogState) -> str:
 
 def optimizer_router(state: BlogState) -> str:
     """
-    Called after the optimizer has written/rewritten the article.
-
-    Priority:
-    1. In turbo mode → end immediately (fastest <45s)
-    2. Any score <70 AND targeted budget remaining → targeted_researcher
-    3. All ≥90 → end
-    4. Any <90 AND optimizer budget remaining → optimizer (polish pass)
-    5. Budget exhausted → end
+    Evaluates post-optimizer scores against the speed profile thresholds:
+    - Turbo: Guarantees all parameters >= 70 (max 2 fast passes)
+    - Balanced: Guarantees all parameters >= 85
+    - Deep Analysis: Guarantees all parameters >= 95 no matter what
     """
-    if getattr(state, "speed_mode", "turbo") == "turbo":
-        return "end"
+    scores = [
+        state.language_score, state.facts_score, state.structure_score,
+        state.seo_score, state.geo_score, state.freshness_score
+    ]
+    min_score = min(scores) if scores else 0
+    mode = getattr(state, "speed_mode", "turbo")
 
-    needs_research = (
-        state.language_score  < 70
-        or state.facts_score     < 70
-        or state.structure_score < 70
-        or state.seo_score       < 70
-        or state.geo_score       < 70
-        or state.freshness_score < 70
-    )
+    # 1. Turbo Mode: Guarantee minimum 70+ across all dimensions
+    if mode == "turbo":
+        if min_score >= 70 or state.optimizer_iteration >= 2:
+            return "end"
+        return "optimizer"
 
-    targeted_runs = getattr(state, "_targeted_runs", 0)
+    # 2. Deep Analysis Mode: Must stay above 95 in all parameters
+    if mode == "deep":
+        if all(s >= 95 for s in scores):
+            return "end"
 
-    if needs_research and targeted_runs < MAX_TARGETED_ITERATIONS:
-        object.__setattr__(state, "_targeted_runs", targeted_runs + 1)
-        return "targeted_researcher"
+        targeted_runs = getattr(state, "_targeted_runs", 0)
+        if any(s < 75 for s in scores) and targeted_runs < MAX_TARGETED_ITERATIONS:
+            object.__setattr__(state, "_targeted_runs", targeted_runs + 1)
+            return "targeted_researcher"
 
-    all_pass = (
-        state.language_score  >= 90
-        and state.facts_score     >= 90
-        and state.structure_score >= 90
-        and state.seo_score       >= 90
-        and state.geo_score       >= 90
-        and state.freshness_score >= 90
-    )
+        if state.optimizer_iteration >= state.max_optimizer_passes:
+            return "end"
+        return "optimizer"
 
-    if all_pass:
-        return "end"
-
-    max_passes = 1 if getattr(state, "speed_mode", "turbo") == "balanced" else state.max_optimizer_passes
-    if state.optimizer_iteration >= max_passes:
+    # 3. Balanced Mode: Guarantee 85+
+    if all(s >= 85 for s in scores) or state.optimizer_iteration >= max(1, min(state.max_optimizer_passes, 3)):
         return "end"
 
     return "optimizer"
