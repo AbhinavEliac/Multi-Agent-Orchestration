@@ -45,16 +45,9 @@ HARD-MANDATED SCORING REQUIREMENTS (MUST INCLUDE ALL):
 □ Zero AI clichés: Do NOT use "tapestry", "delve", "testament to", "beacon of", "harnessing the power", "ever-evolving", "spearheading", "in today's fast-paced world", "in the modern era", "it goes without saying", "furthermore/moreover/additionally" as repetitive openers.
 □ Active, varied rhythm: alternate punchy short sentences (6–10 words) with rich explanatory sentences (18–24 words).
 
-6. VISUAL HIGHLIGHTS & PROFESSIONAL FORMATTING:
-□ Include 2–3 prominent visual callout boxes spread across body sections:
-  > 💡 **Core Strategic Insight:** [1–2 sentences synthesizing key operational principle]
-  > 📊 **Industry Benchmark:** [Key quantitative metric and institutional research finding]
-  > ⚠️ **Implementation Caveat:** [Crucial operational takeaway or pitfall to avoid]
-□ Format at least one clean Markdown Comparison Table (`| Approach | Advantage | Measurable Impact |`) inside a body section.
-□ Use bold highlights (`**82% reduction**`, `**Tier-1 Protocol**`) to emphasize key data points, metrics, and core takeaways for maximum scannability.
-
-7. IMAGES:
-— Place ALL N supplied images throughout the article. Each image MUST be placed immediately after the paragraph whose preceding ~100 words match its semantic context.
+6. IMAGES (MANDATORY EXACT MATCH):
+— You MUST embed EXACTLY all N supplied images across distinct body sections (one image per section).
+— Each image MUST be placed immediately after the paragraph whose preceding words match its semantic context.
 — Format: `![descriptive alt text](url)` followed by `*Figure [N]: Short italic caption (Source: [Source Domain](source_url))*`. Use only supplied URLs.
 
 FRESHNESS: Use the supplied current year. Label data older than 2 years as historical context.
@@ -64,7 +57,7 @@ FINAL CHECK — fix every failure before outputting:
 □ 8+ secondary keywords in body prose?
 □ Every H2 targets a real search query? No research paper headings?
 □ Every body section: 3+ paragraphs, H3, named example, sourced stat?
-□ Visual callouts (`> 💡 ...`) and comparison table included?
+□ Exactly all N supplied images placed contextually with zero duplicates?
 □ FAQ: 5 H3 search-query questions, each with specific fact in answer?
 □ Featured snippet present?
 □ 5+ sourced stats, 4+ named examples, 3 definition blocks, 4 direct answer passages?

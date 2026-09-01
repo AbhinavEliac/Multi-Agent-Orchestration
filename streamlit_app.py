@@ -598,25 +598,32 @@ def render_run_view(run_id: int, _db: BlogDatabase, settings: dict, sq: queue.Qu
         render_failure_details(run)
     else:
         st.caption(f"{format_local_datetime(run.created_at)} · {fmt_dur(run.duration_seconds)} · {run.llm_provider} · {run.optimizer_iterations} pass(es)")
+        is_gen = run.url.startswith("topic:") or bool(getattr(run, "topic_idea", None))
+        bo = 0 if is_gen else run.baseline_overall
         score_table(
             [run.baseline_language, run.baseline_facts, run.baseline_structure, run.baseline_seo, run.baseline_geo, run.baseline_freshness],
             [run.enhanced_language, run.enhanced_facts, run.enhanced_structure, run.enhanced_seo, run.enhanced_geo, run.enhanced_freshness],
-            run.baseline_overall, run.enhanced_overall,
+            bo, run.enhanced_overall,
         )
-        t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
-        with t1:
-            if run.url.startswith("topic:"):
-                st.info("No original blog (Generate Mode).")
-            elif art.original_blog:
-                render_blog(art.original_blog)
-            else:
-                st.info("Not saved.")
-        with t2:
-            if art.enhanced_blog:
-                render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"run_{run.id}")
+        if is_gen:
+            if art and art.enhanced_blog:
+                render_export_buttons(art.enhanced_blog, title=run.title or "Generated Blog", key_suffix=f"run_{run.id}")
                 render_blog(art.enhanced_blog)
             else:
                 st.warning("Not generated.")
+        else:
+            t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
+            with t1:
+                if art and art.original_blog:
+                    render_blog(art.original_blog)
+                else:
+                    st.info("Not saved.")
+            with t2:
+                if art and art.enhanced_blog:
+                    render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"run_{run.id}")
+                    render_blog(art.enhanced_blog)
+                else:
+                    st.warning("Not generated.")
 
     # Render past generations / attempts list
     related_runs = [r for r in _db.list_runs(100) if r.url == run.url and r.id != run.id]
@@ -774,11 +781,6 @@ def _run_generation(state: BlogState, jw: JobWriter, db: BlogDatabase,
                 remote_u = img.get("remote_url") or img.get("source_url")
                 if local_p and remote_u and enhanced_text and not img.get("is_custom"):
                     enhanced_text = enhanced_text.replace(local_p, remote_u)
-                if local_p and os.path.exists(local_p) and not img.get("is_custom"):
-                    try:
-                        os.remove(local_p)
-                    except Exception:
-                        pass
             if result.optimized_blog:
                 result.optimized_blog = enhanced_text
             elif result.aggregated_blog:
@@ -882,15 +884,7 @@ st.set_page_config(page_title="Blog Expert", page_icon="✍️", layout="wide")
 st.markdown("""<style>
 .block-container{max-width:1120px;padding-top:2rem}
 article,.stMarkdown{font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:1.02rem;line-height:1.75}
-h1{color:#f8fafc;font-weight:800;letter-spacing:-0.02em;line-height:1.25;margin-bottom:1.2rem}
-h2{color:#818cf8;font-weight:700;letter-spacing:-0.01em;border-bottom:1px solid #2e3350;padding-bottom:0.4rem;margin-top:2rem;margin-bottom:0.8rem}
-h3{color:#38bdf8;font-weight:600;margin-top:1.3rem;margin-bottom:0.5rem}
-.stMarkdown strong{color:#38bdf8;font-weight:600}
-blockquote{border-left:4px solid #6366f1!important;background:linear-gradient(135deg,rgba(30,41,59,0.7) 0%,rgba(15,23,42,0.85) 100%)!important;padding:14px 20px!important;border-radius:8px!important;margin:1.4rem 0!important;color:#f1f5f9!important;box-shadow:0 4px 14px rgba(0,0,0,0.2)!important}
-blockquote p{margin:0!important;font-size:1.01rem!important}
-.stMarkdown table{width:100%;border-collapse:separate;border-spacing:0;border-radius:8px;overflow:hidden;margin:1.5rem 0;border:1px solid #334155}
-.stMarkdown th{background:#1e293b;color:#38bdf8;font-weight:600;padding:10px 14px;border-bottom:2px solid #38bdf8}
-.stMarkdown td{padding:10px 14px;border-top:1px solid #1e293b;background:rgba(15,23,42,0.45);color:#e2e8f0}
+h1,h2,h3{letter-spacing:0;line-height:1.2}
 .agent-card{background:#1e2130;border:1px solid #2e3350;border-radius:10px;padding:12px 16px;margin-bottom:8px}
 .agent-card p{margin:0;font-size:.95rem}
 .alabel{color:#a0a8c0;font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px!important}
@@ -1250,26 +1244,33 @@ if nav_selection == "New Blog":
                 render_failure_details(run)
             elif art:
                 st.caption(f"Generated at {format_local_datetime(run.created_at)} · {run.llm_provider} · {run.optimizer_iterations} pass(es)")
+                is_gen = run.url.startswith("topic:") or bool(getattr(run, "topic_idea", None))
+                bo = 0 if is_gen else run.baseline_overall
                 score_table(
                     [run.baseline_language, run.baseline_facts, run.baseline_structure, run.baseline_seo, run.baseline_geo, run.baseline_freshness],
                     [run.enhanced_language, run.enhanced_facts, run.enhanced_structure, run.enhanced_seo, run.enhanced_geo, run.enhanced_freshness],
-                    run.baseline_overall, run.enhanced_overall,
+                    bo, run.enhanced_overall,
                 )
                 
-                t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
-                with t1:
-                    if run.url.startswith("topic:"):
-                        st.info("No original blog (Generate Mode).")
-                    elif art.original_blog:
-                        render_blog(art.original_blog)
-                    else:
-                        st.info("Not saved.")
-                with t2:
+                if is_gen:
                     if art.enhanced_blog:
-                        render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"last_{run.id}")
+                        render_export_buttons(art.enhanced_blog, title=run.title or "Generated Blog", key_suffix=f"last_{run.id}")
                         render_blog(art.enhanced_blog)
                     else:
                         st.warning("Not generated.")
+                else:
+                    t1, t2 = st.tabs(["Original Blog", "Enhanced Blog"])
+                    with t1:
+                        if art.original_blog:
+                            render_blog(art.original_blog)
+                        else:
+                            st.info("Not saved.")
+                    with t2:
+                        if art.enhanced_blog:
+                            render_export_buttons(art.enhanced_blog, title=run.title or "Enhanced Blog", key_suffix=f"last_{run.id}")
+                            render_blog(art.enhanced_blog)
+                        else:
+                            st.warning("Not generated.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB: Active Jobs

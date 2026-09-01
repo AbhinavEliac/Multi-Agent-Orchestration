@@ -57,16 +57,8 @@ GEO:
 — 4 direct answer passages spread across sections: 2–3 sentences opening with the direct answer
 — Every named entity described on first mention
 
-VISUAL HIGHLIGHTS & PROFESSIONAL FORMATTING:
-□ Include 2–3 prominent visual callout boxes:
-  > 💡 **Core Strategic Insight:** [1–2 sentences synthesizing key operational principle]
-  > 📊 **Industry Benchmark:** [Key quantitative metric and institutional research finding]
-  > ⚠️ **Implementation Caveat:** [Crucial operational takeaway or pitfall to avoid]
-□ Format at least one clean Markdown Comparison Table (`| Approach | Advantage | Measurable Impact |`) inside a body section.
-□ Use bold highlights (`**82% reduction**`, `**Tier-1 Protocol**`) to emphasize key data points, metrics, and core takeaways.
-
-IMAGES:
-Place ALL N supplied images throughout the article immediately after the paragraph whose preceding ~100 words match its semantic context. Format: `![alt text](url)` followed by `*Figure [N]: Caption (Source: [Source Domain](source_url))*`. Use supplied URLs only. Zero duplicate images or repeated graphics.
+IMAGES (MANDATORY EXACT MATCH):
+You MUST embed EXACTLY all N supplied images across distinct body sections (one image per section) immediately after the paragraph whose preceding words match its semantic context. Format: `![alt text](url)` followed by `*Figure [N]: Caption (Source: [Source Domain](source_url))*`. Use supplied URLs only. Zero duplicate images or repeated graphics.
 
 FRESHNESS: Current year throughout. Stats 2+ years old labelled "as of [year]".
 
@@ -75,7 +67,7 @@ SELF-CHECK — fix every failure before outputting:
 □ 8+ secondary keywords in body?
 □ Every H2 targets a real search query? No research paper headings?
 □ Every body section: 3+ paragraphs, H3, named example, sourced stat?
-□ Visual callouts (`> 💡 ...`) and comparison table included?
+□ Exactly all N supplied images placed contextually with zero duplicates?
 □ FAQ: 5 H3 search-query questions with specific answers?
 □ Featured snippet present?
 □ 5+ sourced stats, 4+ named examples, 3 definition blocks, 4 direct answer passages?

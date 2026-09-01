@@ -98,21 +98,27 @@ class ImageAgent:
         if not blocks:
             return []
 
-        # Distribute `count` windows evenly across blocks
-        if len(blocks) <= count:
-            # Pad by repeating the richest blocks
-            extra = count - len(blocks)
-            richest = sorted(blocks, key=lambda b: len(b["context"]), reverse=True)
-            blocks += richest[:extra]
+        # Distribute `count` windows across blocks or fill with distinct concept slots
+        if len(blocks) < count:
+            needed = count - len(blocks)
+            fallbacks = self._fallback_contexts(state, count)
+            # Use unique fallbacks not already in blocks
+            used_headings = {b["heading"].lower() for b in blocks}
+            for fb in fallbacks:
+                if fb["heading"].lower() not in used_headings:
+                    blocks.append(fb)
+                    used_headings.add(fb["heading"].lower())
+                if len(blocks) >= count:
+                    break
 
-        step = len(blocks) / count
+        step = max(1, len(blocks) // count)
         windows = []
         for i in range(count):
             idx = min(int(i * step), len(blocks) - 1)
             b = blocks[idx]
-            words = b["context"].split()
-            preceding_100 = " ".join(words[-100:]) if len(words) > 100 else b["context"]
-            placement = f"Place after the paragraph in '{b['heading']}' that ends with: '{preceding_100[-80:]}'."
+            words = str(b.get("context", "")).split()
+            preceding_100 = " ".join(words[-100:]) if len(words) > 100 else str(b.get("context", ""))
+            placement = b.get("placement") or f"Place after the paragraph in '{b['heading']}' that discusses this topic."
             windows.append({
                 "heading":   b["heading"],
                 "context":   preceding_100,
@@ -123,13 +129,24 @@ class ImageAgent:
 
     def _fallback_contexts(self, state, count: int) -> list[dict]:
         topic = self._topic(state)
-        words = str(state.research_output[:1000]).split()
-        preceding_100 = " ".join(words[:100])
-        return [{
-            "heading":   "Introduction",
-            "context":   f"{topic} — {preceding_100}",
-            "placement": "Place after the introductory section.",
-        }] * max(count, 1)
+        slots = [
+            ("Technology Architecture & Workflow", f"{topic} system architecture workflow framework diagram"),
+            ("Industry Data & Growth Trends", f"{topic} market analysis statistics growth chart infographic"),
+            ("Strategic Implementation & Deployment", f"{topic} implementation deployment strategy model"),
+            ("Best Practices & Operational Efficiency", f"{topic} operational workflow optimization best practices"),
+            ("Future Roadmap & Innovations", f"{topic} innovation roadmap future technology landscape"),
+        ]
+
+        contexts = []
+        for i in range(max(count, 1)):
+            slot_heading, slot_query = slots[i % len(slots)]
+            heading = f"{slot_heading} Part {i+1}" if i >= len(slots) else slot_heading
+            contexts.append({
+                "heading": heading,
+                "context": f"{topic} — {slot_query}",
+                "placement": f"Place after the section discussing '{heading}'.",
+            })
+        return contexts
 
     def _image_query(self, state, section: dict) -> str:
         """
@@ -374,6 +391,35 @@ class ImageAgent:
                             dl.setdefault("context",   section["context"])
                             dl.setdefault("placement", section["placement"])
                             dl["section"] = section["heading"]
+                            dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
+                            images.append(dl)
+                            if len(images) >= target_total:
+                                break
+
+            # 3. Third pass: broad topic search if still below target
+            if len(images) < target_total:
+                topic = self._topic(state)
+                broad_queries = [
+                    f"{topic} infographic chart {state.current_year}",
+                    f"{topic} technology architecture framework diagram",
+                    f"{topic} market analysis statistics trends",
+                    f"{topic} enterprise workflow implementation roadmap",
+                ]
+                for bq in broad_queries:
+                    if len(images) >= target_total:
+                        break
+                    cands = self._filter_candidates(
+                        search_image_candidates(bq, max_results=8, search_depth=self._search_depth(state.research_level)),
+                        {"heading": "Key Analysis", "context": topic}
+                    )
+                    for c in cands:
+                        dl = download_image(c, "Overview")
+                        url = dl.get("url")
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            dl.setdefault("context", f"Comprehensive analysis for {topic}")
+                            dl.setdefault("placement", f"Place in the section illustrating {topic}.")
+                            dl["section"] = "Key Insights"
                             dl["source_url"] = dl.get("source_url") or dl.get("remote_url") or url
                             images.append(dl)
                             if len(images) >= target_total:
