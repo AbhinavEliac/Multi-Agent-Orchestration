@@ -193,7 +193,7 @@ class ImageAgent:
         if not custom_images:
             return []
 
-        # Extract available sections from markdown
+        # Extract available sections from markdown or fallbacks
         sections = self._context_windows(markdown, max(len(custom_images), 4)) or self._fallback_contexts(state, len(custom_images))
         processed = []
         used_sections = set()
@@ -202,11 +202,12 @@ class ImageAgent:
             img_path = c_img.get("image_path") or c_img.get("url") or ""
             if not img_path:
                 continue
+            img_path = Path(img_path).as_posix()
 
             caption = c_img.get("caption") or ""
             desc = c_img.get("description") or ""
             hint = c_img.get("placement_hint") or ""
-            source = c_img.get("source") or "Custom Image"
+            source = c_img.get("source") or "Custom Upload"
 
             # Combine signals to find the best matching section
             combined_query = f"{caption} {desc} {hint}".lower().strip()
@@ -248,6 +249,7 @@ class ImageAgent:
 
             processed.append({
                 "url": img_path,
+                "local_path": img_path,
                 "caption": caption or desc or f"Illustration for {heading}",
                 "alt": caption or desc or f"{heading} image",
                 "source_url": source,
