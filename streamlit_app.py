@@ -944,62 +944,19 @@ if nav_selection == "New Blog":
         main_url_val = ""
         mode = "generate"
 
-    # ── Custom Images Section ──────────────────────────────────────────────────
-    with st.expander("🖼️ Custom Images & Contextual Placement (Optional)", expanded=False):
-        st.markdown(
-            "Upload your own images and specify details/context for each. "
-            "The AI agent will analyze the details and place each image in the most relevant section of the blog."
-        )
-        uploaded_files = st.file_uploader(
-            "Upload image files",
-            type=["png", "jpg", "jpeg", "webp"],
-            accept_multiple_files=True,
-            key="custom_images_uploader"
-        )
-        custom_images_list = []
-        if uploaded_files:
-            custom_img_dir = Path.cwd() / "data" / "custom_images"
-            custom_img_dir.mkdir(parents=True, exist_ok=True)
-            st.markdown(f"**Configuring {len(uploaded_files)} Custom Image(s):**")
-            for idx, uf in enumerate(uploaded_files):
-                safe_name = re.sub(r"[^\w\.-]", "_", uf.name)
-                saved_path = custom_img_dir / f"custom_{idx}_{safe_name}"
-                with open(saved_path, "wb") as f:
-                    f.write(uf.getbuffer())
-                
-                with st.container():
-                    col_prev, col_fields = st.columns([1, 3])
-                    with col_prev:
-                        st.image(str(saved_path), caption=uf.name, use_container_width=True)
-                    with col_fields:
-                        c_caption = st.text_input(
-                            f"Caption #{idx+1}",
-                            value=Path(uf.name).stem.replace("_", " ").replace("-", " ").title(),
-                            key=f"c_cap_{idx}_{uf.name}",
-                            help="Displayed underneath the image in the blog"
-                        )
-                        c_desc = st.text_area(
-                            f"Context / Details #{idx+1}",
-                            value="",
-                            placeholder="Explain what this image illustrates and what topic or section it relates to...",
-                            key=f"c_desc_{idx}_{uf.name}",
-                            help="The AI uses this to match the image to the most appropriate section."
-                        )
-                        c_hint = st.text_input(
-                            f"Placement Hint (optional) #{idx+1}",
-                            value="",
-                            placeholder="e.g., In the introduction, or right after discussing architecture",
-                            key=f"c_hint_{idx}_{uf.name}"
-                        )
-                    
-                    custom_images_list.append({
-                        "image_path": str(saved_path),
-                        "caption": c_caption,
-                        "description": c_desc,
-                        "placement_hint": c_hint,
-                        "source": "Custom Upload"
-                    })
-                    st.markdown("<hr style='margin: 0.5rem 0; border-color: #2e3350;'/>", unsafe_allow_html=True)
+    # ── Custom Images Section (Temporarily commented out) ─────────────────────
+    # with st.expander("🖼️ Custom Images & Contextual Placement (Optional)", expanded=False):
+    #     st.markdown(
+    #         "Upload your own images and specify details/context for each. "
+    #         "The AI agent will analyze the details and place each image in the most relevant section of the blog."
+    #     )
+    #     uploaded_files = st.file_uploader(
+    #         "Upload image files",
+    #         type=["png", "jpg", "jpeg", "webp"],
+    #         accept_multiple_files=True,
+    #         key="custom_images_uploader"
+    #     )
+    custom_images_list = []
 
     main_gen_btn = st.button("🚀 Start Generation Process", type="primary", use_container_width=True, key="main_gen_btn")
 
